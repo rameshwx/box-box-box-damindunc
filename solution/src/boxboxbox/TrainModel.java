@@ -541,6 +541,13 @@ public final class TrainModel {
         return totalStops;
     }
 
+    private static int totalLaps(RaceInput race) {
+        if (race == null || race.race_config == null) {
+            return 0;
+        }
+        return race.race_config.total_laps;
+    }
+
     private static final class Config {
         final Path histDir;
         final Path output;
@@ -550,6 +557,11 @@ public final class TrainModel {
         final long seed;
         final Integer minTotalStops;
         final Integer maxTotalStops;
+        final Integer minTotalLaps;
+        final Integer maxTotalLaps;
+        final String track;
+        final Integer minTrackTemp;
+        final Integer maxTrackTemp;
 
         Config(
                 Path histDir,
@@ -559,7 +571,12 @@ public final class TrainModel {
                 int epochs,
                 long seed,
                 Integer minTotalStops,
-                Integer maxTotalStops) {
+                Integer maxTotalStops,
+                Integer minTotalLaps,
+                Integer maxTotalLaps,
+                String track,
+                Integer minTrackTemp,
+                Integer maxTrackTemp) {
             this.histDir = histDir;
             this.output = output;
             this.valMod = valMod;
@@ -568,6 +585,11 @@ public final class TrainModel {
             this.seed = seed;
             this.minTotalStops = minTotalStops;
             this.maxTotalStops = maxTotalStops;
+            this.minTotalLaps = minTotalLaps;
+            this.maxTotalLaps = maxTotalLaps;
+            this.track = track;
+            this.minTrackTemp = minTrackTemp;
+            this.maxTrackTemp = maxTrackTemp;
         }
 
         boolean isValidationRace(String raceId) {
@@ -575,11 +597,33 @@ public final class TrainModel {
         }
 
         boolean includesRace(RaceInput race) {
+            if (track != null) {
+                if (race == null || race.race_config == null || !track.equals(race.race_config.track)) {
+                    return false;
+                }
+            }
+            if (minTrackTemp != null) {
+                if (race == null || race.race_config == null || race.race_config.track_temp < minTrackTemp) {
+                    return false;
+                }
+            }
+            if (maxTrackTemp != null) {
+                if (race == null || race.race_config == null || race.race_config.track_temp > maxTrackTemp) {
+                    return false;
+                }
+            }
             int raceTotalStops = totalStops(race);
             if (minTotalStops != null && raceTotalStops < minTotalStops) {
                 return false;
             }
             if (maxTotalStops != null && raceTotalStops > maxTotalStops) {
+                return false;
+            }
+            int raceTotalLaps = totalLaps(race);
+            if (minTotalLaps != null && raceTotalLaps < minTotalLaps) {
+                return false;
+            }
+            if (maxTotalLaps != null && raceTotalLaps > maxTotalLaps) {
                 return false;
             }
             return true;
@@ -594,6 +638,11 @@ public final class TrainModel {
             long seed = 20260314L;
             Integer minTotalStops = null;
             Integer maxTotalStops = null;
+            Integer minTotalLaps = null;
+            Integer maxTotalLaps = null;
+            String track = null;
+            Integer minTrackTemp = null;
+            Integer maxTrackTemp = null;
 
             for (int index = 0; index < args.length; index++) {
                 String arg = args[index];
@@ -613,6 +662,11 @@ public final class TrainModel {
                     case "--seed" -> seed = Long.parseLong(value);
                     case "--min-total-stops" -> minTotalStops = Integer.parseInt(value);
                     case "--max-total-stops" -> maxTotalStops = Integer.parseInt(value);
+                    case "--min-total-laps" -> minTotalLaps = Integer.parseInt(value);
+                    case "--max-total-laps" -> maxTotalLaps = Integer.parseInt(value);
+                    case "--track" -> track = value;
+                    case "--min-track-temp" -> minTrackTemp = Integer.parseInt(value);
+                    case "--max-track-temp" -> maxTrackTemp = Integer.parseInt(value);
                     default -> throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
             }
@@ -635,7 +689,32 @@ public final class TrainModel {
             if (minTotalStops != null && maxTotalStops != null && minTotalStops > maxTotalStops) {
                 throw new IllegalArgumentException("--min-total-stops cannot be greater than --max-total-stops");
             }
-            return new Config(histDir, output, valMod, valRem, epochs, seed, minTotalStops, maxTotalStops);
+            if (minTotalLaps != null && minTotalLaps < 0) {
+                throw new IllegalArgumentException("--min-total-laps must be non-negative");
+            }
+            if (maxTotalLaps != null && maxTotalLaps < 0) {
+                throw new IllegalArgumentException("--max-total-laps must be non-negative");
+            }
+            if (minTotalLaps != null && maxTotalLaps != null && minTotalLaps > maxTotalLaps) {
+                throw new IllegalArgumentException("--min-total-laps cannot be greater than --max-total-laps");
+            }
+            if (minTrackTemp != null && maxTrackTemp != null && minTrackTemp > maxTrackTemp) {
+                throw new IllegalArgumentException("--min-track-temp cannot be greater than --max-track-temp");
+            }
+            return new Config(
+                    histDir,
+                    output,
+                    valMod,
+                    valRem,
+                    epochs,
+                    seed,
+                    minTotalStops,
+                    maxTotalStops,
+                    minTotalLaps,
+                    maxTotalLaps,
+                    track,
+                    minTrackTemp,
+                    maxTrackTemp);
         }
     }
 
