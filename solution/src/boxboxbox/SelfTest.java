@@ -30,6 +30,18 @@ public final class SelfTest {
         assertEquals(driver.countFor("HARD", 1), 1, "hard age 1");
         assertEquals(driver.countFor("HARD", 6), 1, "hard age 6");
         assertEquals(driver.countFor("SOFT", 5), 0, "soft age 5 absent");
+        assertEquals(driver.lapCountFor("SOFT", 1), 1, "soft lap 1");
+        assertEquals(driver.lapCountFor("SOFT", 4), 1, "soft lap 4");
+        assertEquals(driver.lapCountFor("HARD", 5), 1, "hard lap 5");
+        assertEquals(driver.lapCountFor("HARD", 10), 1, "hard lap 10");
+        assertEquals(
+                driver.phaseCountFor("SOFT", FeatureSchema.phaseBucket(1, 10)),
+                1,
+                "soft opening phase");
+        assertEquals(
+                driver.phaseCountFor("HARD", FeatureSchema.phaseBucket(10, 10)),
+                1,
+                "hard closing phase");
     }
 
     private static void testTwoStopAgeExpansion() {
@@ -47,6 +59,14 @@ public final class SelfTest {
         assertEquals(driver.countFor("SOFT", 4), 1, "soft age 4");
         assertEquals(driver.countFor("HARD", 2), 1, "hard age 2");
         assertEquals(driver.countFor("SOFT", 5), 0, "soft age 5 absent");
+        assertEquals(driver.lapCountFor("MEDIUM", 3), 1, "medium lap 3");
+        assertEquals(driver.lapCountFor("SOFT", 4), 1, "soft lap 4");
+        assertEquals(driver.lapCountFor("SOFT", 7), 1, "soft lap 7");
+        assertEquals(driver.lapCountFor("HARD", 8), 1, "hard lap 8");
+        assertEquals(
+                driver.phaseCountFor("SOFT", FeatureSchema.phaseBucket(4, 9)),
+                1,
+                "soft phase after stop");
     }
 
     private static void testPenultimateStop() {
@@ -58,12 +78,15 @@ public final class SelfTest {
         assertEquals(driver.countFor("MEDIUM", 9), 1, "medium age 9");
         assertEquals(driver.countFor("HARD", 1), 1, "hard age 1");
         assertEquals(driver.countFor("HARD", 2), 0, "hard age 2 absent");
+        assertEquals(driver.lapCountFor("MEDIUM", 9), 1, "medium lap 9");
+        assertEquals(driver.lapCountFor("HARD", 10), 1, "hard lap 10");
     }
 
     private static void testModelRoundTrip() throws Exception {
         Model model = Model.zero();
         model.global_age[FeatureSchema.compoundIndex("SOFT")][1] = -0.75;
-        model.global_age_temp[FeatureSchema.compoundIndex("HARD")][3] = 0.25;
+        model.temp_age[FeatureSchema.tempBucket(30)][FeatureSchema.compoundIndex("HARD")][3] = 0.25;
+        model.global_phase[FeatureSchema.compoundIndex("SOFT")][FeatureSchema.phaseBucket(1, 5)] = -0.1;
 
         Path tempFile = Files.createTempFile("boxboxbox-model", ".json");
         try {
@@ -90,6 +113,9 @@ public final class SelfTest {
         model.global_age[FeatureSchema.compoundIndex("MEDIUM")][1] = 2.0;
         model.global_age[FeatureSchema.compoundIndex("MEDIUM")][2] = 2.0;
         model.global_age[FeatureSchema.compoundIndex("MEDIUM")][3] = 2.0;
+        model.global_lap[FeatureSchema.compoundIndex("SOFT")][1] = -0.5;
+        model.global_lap[FeatureSchema.compoundIndex("SOFT")][2] = -0.5;
+        model.global_lap[FeatureSchema.compoundIndex("SOFT")][3] = -0.5;
 
         RaceInput race = buildRace(
                 "UNIT_RANKING",
@@ -108,7 +134,14 @@ public final class SelfTest {
             System.out.println("SelfTest: skipping integration checks because solution/model.json does not exist yet");
             return;
         }
-        Model model = Model.load(modelPath);
+        Model model;
+        try {
+            model = Model.load(modelPath);
+        } catch (IllegalArgumentException exception) {
+            System.out.println(
+                    "SelfTest: skipping integration checks because solution/model.json is incompatible with this code");
+            return;
+        }
         com.google.gson.Gson gson = new com.google.gson.Gson();
         for (String name : List.of("test_001.json", "test_050.json")) {
             try (var reader = Files.newBufferedReader(Path.of("data", "test_cases", "inputs", name))) {

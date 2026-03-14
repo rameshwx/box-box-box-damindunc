@@ -32,6 +32,7 @@ public final class TrainModel {
         ValidationMetrics baseline = evaluate(model, files, config);
         Model bestModel = model.deepCopy();
         ValidationMetrics bestMetrics = baseline;
+        int bestEpoch = 0;
 
         System.out.printf(
                 "Baseline validation: exact=%d/%d (%.4f) pairwise=%d/%d (%.4f)%n",
@@ -61,6 +62,7 @@ public final class TrainModel {
             if (metrics.betterThan(bestMetrics)) {
                 bestMetrics = metrics;
                 bestModel = model.deepCopy();
+                bestEpoch = epoch;
             }
         }
 
@@ -70,8 +72,9 @@ public final class TrainModel {
                         && bestMetrics.pairwiseAccuracy() > baseline.pairwiseAccuracy());
 
         System.out.printf(
-                "Saved model to %s%nBest validation: exact=%d/%d (%.4f) pairwise=%d/%d (%.4f)%n",
+                "Saved model to %s%nBest validation: best_epoch=%d exact=%d/%d (%.4f) pairwise=%d/%d (%.4f)%n",
                 config.output,
+                bestEpoch,
                 bestMetrics.exactCorrect,
                 bestMetrics.raceCount,
                 bestMetrics.exactAccuracy(),
@@ -148,50 +151,304 @@ public final class TrainModel {
     private static void updatePair(Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse) {
         double delta = worse.score(model) - better.score(model);
         double logistic = inverseLogit(delta);
+        updateAgePair(model, state, better, worse, logistic);
+        updateLapPair(model, state, better, worse, logistic);
+        updatePhasePair(model, state, better, worse, logistic);
+        updateAgeLapPair(model, state, better, worse, logistic);
+        updateAgePhasePair(model, state, better, worse, logistic);
+        updateTransitionPair(model, state, better, worse, logistic);
+        updateTransitionPhasePair(model, state, better, worse, logistic);
+    }
 
+    private static void updateAgePair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
         int betterCursor = 0;
         int worseCursor = 0;
-        int trackIndex = better.trackIndex;
-        double tempNorm = better.tempNorm;
-        double tempNormSq = better.tempNormSq;
-        double baseNorm = better.baseNorm;
 
-        while (betterCursor < better.activeFlatIndices.length || worseCursor < worse.activeFlatIndices.length) {
-            int betterFlat = betterCursor < better.activeFlatIndices.length ? better.activeFlatIndices[betterCursor] : Integer.MAX_VALUE;
-            int worseFlat = worseCursor < worse.activeFlatIndices.length ? worse.activeFlatIndices[worseCursor] : Integer.MAX_VALUE;
+        while (betterCursor < better.activeAgeFlatIndices.length || worseCursor < worse.activeAgeFlatIndices.length) {
+            int betterFlat =
+                    betterCursor < better.activeAgeFlatIndices.length ? better.activeAgeFlatIndices[betterCursor] : Integer.MAX_VALUE;
+            int worseFlat =
+                    worseCursor < worse.activeAgeFlatIndices.length ? worse.activeAgeFlatIndices[worseCursor] : Integer.MAX_VALUE;
 
             int flatIndex = Math.min(betterFlat, worseFlat);
             int diffCount = 0;
             if (flatIndex == betterFlat) {
-                diffCount -= better.activeCounts[betterCursor];
+                diffCount -= better.activeAgeCounts[betterCursor];
                 betterCursor++;
             }
             if (flatIndex == worseFlat) {
-                diffCount += worse.activeCounts[worseCursor];
+                diffCount += worse.activeAgeCounts[worseCursor];
                 worseCursor++;
             }
             if (diffCount == 0) {
                 continue;
             }
 
-            int compoundIndex = FeatureSchema.compoundFromFlat(flatIndex);
+            int compoundIndex = FeatureSchema.compoundFromAgeFlat(flatIndex);
             int age = FeatureSchema.ageFromFlat(flatIndex);
-
             apply(model.global_age, state.global_age_accum, compoundIndex, age, logistic, diffCount);
-            apply(model.global_age_temp, state.global_age_temp_accum, compoundIndex, age, logistic, diffCount * tempNorm);
             apply(
-                    model.global_age_temp_sq,
-                    state.global_age_temp_sq_accum,
+                    model.temp_age[better.tempBucket],
+                    state.temp_age_accum[better.tempBucket],
                     compoundIndex,
                     age,
                     logistic,
-                    diffCount * tempNormSq);
-            apply(model.global_age_base, state.global_age_base_accum, compoundIndex, age, logistic, diffCount * baseNorm);
+                    diffCount);
             apply(
-                    model.track_age[trackIndex],
-                    state.track_age_accum[trackIndex],
+                    model.base_age[better.baseBucket],
+                    state.base_age_accum[better.baseBucket],
                     compoundIndex,
                     age,
+                    logistic,
+                    diffCount);
+            apply(
+                    model.track_age[better.trackIndex],
+                    state.track_age_accum[better.trackIndex],
+                    compoundIndex,
+                    age,
+                    logistic,
+                    diffCount);
+        }
+    }
+
+    private static void updateLapPair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+        int betterCursor = 0;
+        int worseCursor = 0;
+
+        while (betterCursor < better.activeLapFlatIndices.length || worseCursor < worse.activeLapFlatIndices.length) {
+            int betterFlat =
+                    betterCursor < better.activeLapFlatIndices.length ? better.activeLapFlatIndices[betterCursor] : Integer.MAX_VALUE;
+            int worseFlat =
+                    worseCursor < worse.activeLapFlatIndices.length ? worse.activeLapFlatIndices[worseCursor] : Integer.MAX_VALUE;
+
+            int flatIndex = Math.min(betterFlat, worseFlat);
+            int diffCount = 0;
+            if (flatIndex == betterFlat) {
+                diffCount -= better.activeLapCounts[betterCursor];
+                betterCursor++;
+            }
+            if (flatIndex == worseFlat) {
+                diffCount += worse.activeLapCounts[worseCursor];
+                worseCursor++;
+            }
+            if (diffCount == 0) {
+                continue;
+            }
+
+            int compoundIndex = FeatureSchema.compoundFromLapFlat(flatIndex);
+            int lap = FeatureSchema.lapFromFlat(flatIndex);
+            apply(model.global_lap, state.global_lap_accum, compoundIndex, lap, logistic, diffCount);
+            apply(
+                    model.temp_lap[better.tempBucket],
+                    state.temp_lap_accum[better.tempBucket],
+                    compoundIndex,
+                    lap,
+                    logistic,
+                    diffCount);
+            apply(
+                    model.base_lap[better.baseBucket],
+                    state.base_lap_accum[better.baseBucket],
+                    compoundIndex,
+                    lap,
+                    logistic,
+                    diffCount);
+            apply(
+                    model.track_lap[better.trackIndex],
+                    state.track_lap_accum[better.trackIndex],
+                    compoundIndex,
+                    lap,
+                    logistic,
+                    diffCount);
+        }
+    }
+
+    private static void updatePhasePair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+        int betterCursor = 0;
+        int worseCursor = 0;
+
+        while (betterCursor < better.activePhaseFlatIndices.length || worseCursor < worse.activePhaseFlatIndices.length) {
+            int betterFlat = betterCursor < better.activePhaseFlatIndices.length
+                    ? better.activePhaseFlatIndices[betterCursor]
+                    : Integer.MAX_VALUE;
+            int worseFlat = worseCursor < worse.activePhaseFlatIndices.length
+                    ? worse.activePhaseFlatIndices[worseCursor]
+                    : Integer.MAX_VALUE;
+
+            int flatIndex = Math.min(betterFlat, worseFlat);
+            int diffCount = 0;
+            if (flatIndex == betterFlat) {
+                diffCount -= better.activePhaseCounts[betterCursor];
+                betterCursor++;
+            }
+            if (flatIndex == worseFlat) {
+                diffCount += worse.activePhaseCounts[worseCursor];
+                worseCursor++;
+            }
+            if (diffCount == 0) {
+                continue;
+            }
+
+            int compoundIndex = FeatureSchema.compoundFromPhaseFlat(flatIndex);
+            int phase = FeatureSchema.phaseFromFlat(flatIndex);
+            apply(model.global_phase, state.global_phase_accum, compoundIndex, phase, logistic, diffCount);
+        }
+    }
+
+    private static void updateAgeLapPair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+        int betterCursor = 0;
+        int worseCursor = 0;
+
+        while (betterCursor < better.activeAgeLapFlatIndices.length || worseCursor < worse.activeAgeLapFlatIndices.length) {
+            int betterFlat = betterCursor < better.activeAgeLapFlatIndices.length
+                    ? better.activeAgeLapFlatIndices[betterCursor]
+                    : Integer.MAX_VALUE;
+            int worseFlat = worseCursor < worse.activeAgeLapFlatIndices.length
+                    ? worse.activeAgeLapFlatIndices[worseCursor]
+                    : Integer.MAX_VALUE;
+
+            int flatIndex = Math.min(betterFlat, worseFlat);
+            int diffCount = 0;
+            if (flatIndex == betterFlat) {
+                diffCount -= better.activeAgeLapCounts[betterCursor];
+                betterCursor++;
+            }
+            if (flatIndex == worseFlat) {
+                diffCount += worse.activeAgeLapCounts[worseCursor];
+                worseCursor++;
+            }
+            if (diffCount == 0) {
+                continue;
+            }
+
+            int compoundIndex = FeatureSchema.compoundFromAgeLapFlat(flatIndex);
+            int age = FeatureSchema.ageFromAgeLapFlat(flatIndex);
+            int lap = FeatureSchema.lapFromAgeLapFlat(flatIndex);
+            apply(model.global_age_lap, state.global_age_lap_accum, compoundIndex, age, lap, logistic, diffCount);
+        }
+    }
+
+    private static void updateAgePhasePair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+        int betterCursor = 0;
+        int worseCursor = 0;
+
+        while (betterCursor < better.activeAgePhaseFlatIndices.length
+                || worseCursor < worse.activeAgePhaseFlatIndices.length) {
+            int betterFlat = betterCursor < better.activeAgePhaseFlatIndices.length
+                    ? better.activeAgePhaseFlatIndices[betterCursor]
+                    : Integer.MAX_VALUE;
+            int worseFlat = worseCursor < worse.activeAgePhaseFlatIndices.length
+                    ? worse.activeAgePhaseFlatIndices[worseCursor]
+                    : Integer.MAX_VALUE;
+
+            int flatIndex = Math.min(betterFlat, worseFlat);
+            int diffCount = 0;
+            if (flatIndex == betterFlat) {
+                diffCount -= better.activeAgePhaseCounts[betterCursor];
+                betterCursor++;
+            }
+            if (flatIndex == worseFlat) {
+                diffCount += worse.activeAgePhaseCounts[worseCursor];
+                worseCursor++;
+            }
+            if (diffCount == 0) {
+                continue;
+            }
+
+            int compoundIndex = FeatureSchema.compoundFromAgePhaseFlat(flatIndex);
+            int age = FeatureSchema.ageFromAgePhaseFlat(flatIndex);
+            int phase = FeatureSchema.phaseFromAgePhaseFlat(flatIndex);
+            apply(model.global_age_phase, state.global_age_phase_accum, compoundIndex, age, phase, logistic, diffCount);
+        }
+    }
+
+    private static void updateTransitionPair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+        int betterCursor = 0;
+        int worseCursor = 0;
+
+        while (betterCursor < better.activeTransitionFlatIndices.length
+                || worseCursor < worse.activeTransitionFlatIndices.length) {
+            int betterFlat = betterCursor < better.activeTransitionFlatIndices.length
+                    ? better.activeTransitionFlatIndices[betterCursor]
+                    : Integer.MAX_VALUE;
+            int worseFlat = worseCursor < worse.activeTransitionFlatIndices.length
+                    ? worse.activeTransitionFlatIndices[worseCursor]
+                    : Integer.MAX_VALUE;
+
+            int flatIndex = Math.min(betterFlat, worseFlat);
+            int diffCount = 0;
+            if (flatIndex == betterFlat) {
+                diffCount -= better.activeTransitionCounts[betterCursor];
+                betterCursor++;
+            }
+            if (flatIndex == worseFlat) {
+                diffCount += worse.activeTransitionCounts[worseCursor];
+                worseCursor++;
+            }
+            if (diffCount == 0) {
+                continue;
+            }
+
+            int stopSlot = FeatureSchema.stopSlotFromTransitionFlat(flatIndex);
+            int fromCompound = FeatureSchema.fromCompoundFromTransitionFlat(flatIndex);
+            int toCompound = FeatureSchema.toCompoundFromTransitionFlat(flatIndex);
+            int lap = FeatureSchema.lapFromTransitionFlat(flatIndex);
+            apply(
+                    model.transition_weight,
+                    state.transition_weight_accum,
+                    stopSlot,
+                    fromCompound,
+                    toCompound,
+                    lap,
+                    logistic,
+                    diffCount);
+        }
+    }
+
+    private static void updateTransitionPhasePair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+        int betterCursor = 0;
+        int worseCursor = 0;
+
+        while (betterCursor < better.activeTransitionPhaseFlatIndices.length
+                || worseCursor < worse.activeTransitionPhaseFlatIndices.length) {
+            int betterFlat = betterCursor < better.activeTransitionPhaseFlatIndices.length
+                    ? better.activeTransitionPhaseFlatIndices[betterCursor]
+                    : Integer.MAX_VALUE;
+            int worseFlat = worseCursor < worse.activeTransitionPhaseFlatIndices.length
+                    ? worse.activeTransitionPhaseFlatIndices[worseCursor]
+                    : Integer.MAX_VALUE;
+
+            int flatIndex = Math.min(betterFlat, worseFlat);
+            int diffCount = 0;
+            if (flatIndex == betterFlat) {
+                diffCount -= better.activeTransitionPhaseCounts[betterCursor];
+                betterCursor++;
+            }
+            if (flatIndex == worseFlat) {
+                diffCount += worse.activeTransitionPhaseCounts[worseCursor];
+                worseCursor++;
+            }
+            if (diffCount == 0) {
+                continue;
+            }
+
+            int stopSlot = FeatureSchema.stopSlotFromTransitionPhaseFlat(flatIndex);
+            int fromCompound = FeatureSchema.fromCompoundFromTransitionPhaseFlat(flatIndex);
+            int toCompound = FeatureSchema.toCompoundFromTransitionPhaseFlat(flatIndex);
+            int phase = FeatureSchema.phaseFromTransitionPhaseFlat(flatIndex);
+            apply(
+                    model.transition_phase_weight,
+                    state.transition_phase_weight_accum,
+                    stopSlot,
+                    fromCompound,
+                    toCompound,
+                    phase,
                     logistic,
                     diffCount);
         }
@@ -208,6 +465,35 @@ public final class TrainModel {
         accum[compoundIndex][age] += gradient * gradient;
         double adjustedRate = LEARNING_RATE / Math.sqrt(accum[compoundIndex][age] + EPSILON);
         weights[compoundIndex][age] -= adjustedRate * gradient;
+    }
+
+    private static void apply(
+            double[][][] weights,
+            double[][][] accum,
+            int compoundIndex,
+            int age,
+            int lap,
+            double logistic,
+            double featureValue) {
+        double gradient = -logistic * featureValue + L2 * weights[compoundIndex][age][lap];
+        accum[compoundIndex][age][lap] += gradient * gradient;
+        double adjustedRate = LEARNING_RATE / Math.sqrt(accum[compoundIndex][age][lap] + EPSILON);
+        weights[compoundIndex][age][lap] -= adjustedRate * gradient;
+    }
+
+    private static void apply(
+            double[][][][] weights,
+            double[][][][] accum,
+            int stopSlot,
+            int fromCompound,
+            int toCompound,
+            int lap,
+            double logistic,
+            double featureValue) {
+        double gradient = -logistic * featureValue + L2 * weights[stopSlot][fromCompound][toCompound][lap];
+        accum[stopSlot][fromCompound][toCompound][lap] += gradient * gradient;
+        double adjustedRate = LEARNING_RATE / Math.sqrt(accum[stopSlot][fromCompound][toCompound][lap] + EPSILON);
+        weights[stopSlot][fromCompound][toCompound][lap] -= adjustedRate * gradient;
     }
 
     private static int compare(String leftId, double leftScore, String rightId, double rightScore) {
@@ -306,11 +592,30 @@ public final class TrainModel {
 
     private static final class OptimizerState {
         final double[][] global_age_accum = new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS];
-        final double[][] global_age_temp_accum = new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS];
-        final double[][] global_age_temp_sq_accum = new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS];
-        final double[][] global_age_base_accum = new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS];
+        final double[][][] temp_age_accum =
+                new double[FeatureSchema.TEMP_BUCKETS][FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS];
+        final double[][][] base_age_accum =
+                new double[FeatureSchema.BASE_BUCKETS][FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS];
         final double[][][] track_age_accum =
                 new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS];
+        final double[][] global_lap_accum = new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
+        final double[][][] temp_lap_accum =
+                new double[FeatureSchema.TEMP_BUCKETS][FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
+        final double[][][] base_lap_accum =
+                new double[FeatureSchema.BASE_BUCKETS][FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
+        final double[][][] track_lap_accum =
+                new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
+        final double[][] global_phase_accum = new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        final double[][][] global_age_lap_accum =
+                new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS][FeatureSchema.LAP_BUCKETS];
+        final double[][][] global_age_phase_accum =
+                new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS][FeatureSchema.PHASE_BUCKETS];
+        final double[][][][] transition_weight_accum =
+                new double[FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length]
+                        [FeatureSchema.LAP_BUCKETS];
+        final double[][][][] transition_phase_weight_accum =
+                new double[FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length]
+                        [FeatureSchema.PHASE_BUCKETS];
     }
 
     private static final class ValidationMetrics {
