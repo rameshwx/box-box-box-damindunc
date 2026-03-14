@@ -100,7 +100,7 @@ public final class TrainModel {
         for (Path path : shuffledFiles) {
             List<PreparedRace> races = new ArrayList<>();
             for (RaceInput race : readHistoricalFile(path, gson)) {
-                if (!config.isValidationRace(race.race_id)) {
+                if (config.includesRace(race) && !config.isValidationRace(race.race_id)) {
                     races.add(FeatureExtractor.prepareRace(race, true));
                 }
             }
@@ -126,7 +126,7 @@ public final class TrainModel {
 
         for (Path path : files) {
             for (RaceInput race : readHistoricalFile(path, gson)) {
-                if (!config.isValidationRace(race.race_id)) {
+                if (!config.includesRace(race) || !config.isValidationRace(race.race_id)) {
                     continue;
                 }
                 PreparedRace prepared = FeatureExtractor.prepareRace(race, true);
@@ -528,6 +528,19 @@ public final class TrainModel {
         }
     }
 
+    private static int totalStops(RaceInput race) {
+        if (race == null || race.strategies == null) {
+            return 0;
+        }
+        int totalStops = 0;
+        for (Strategy strategy : race.strategies.values()) {
+            if (strategy != null && strategy.pit_stops != null) {
+                totalStops += strategy.pit_stops.size();
+            }
+        }
+        return totalStops;
+    }
+
     private static final class Config {
         final Path histDir;
         final Path output;
@@ -535,18 +548,41 @@ public final class TrainModel {
         final int valRem;
         final int epochs;
         final long seed;
+        final Integer minTotalStops;
+        final Integer maxTotalStops;
 
-        Config(Path histDir, Path output, int valMod, int valRem, int epochs, long seed) {
+        Config(
+                Path histDir,
+                Path output,
+                int valMod,
+                int valRem,
+                int epochs,
+                long seed,
+                Integer minTotalStops,
+                Integer maxTotalStops) {
             this.histDir = histDir;
             this.output = output;
             this.valMod = valMod;
             this.valRem = valRem;
             this.epochs = epochs;
             this.seed = seed;
+            this.minTotalStops = minTotalStops;
+            this.maxTotalStops = maxTotalStops;
         }
 
         boolean isValidationRace(String raceId) {
             return Math.floorMod(raceId.hashCode(), valMod) == valRem;
+        }
+
+        boolean includesRace(RaceInput race) {
+            int raceTotalStops = totalStops(race);
+            if (minTotalStops != null && raceTotalStops < minTotalStops) {
+                return false;
+            }
+            if (maxTotalStops != null && raceTotalStops > maxTotalStops) {
+                return false;
+            }
+            return true;
         }
 
         static Config parse(String[] args) {
@@ -556,6 +592,8 @@ public final class TrainModel {
             int valRem = 0;
             int epochs = 5;
             long seed = 20260314L;
+            Integer minTotalStops = null;
+            Integer maxTotalStops = null;
 
             for (int index = 0; index < args.length; index++) {
                 String arg = args[index];
@@ -573,6 +611,8 @@ public final class TrainModel {
                     case "--val-rem" -> valRem = Integer.parseInt(value);
                     case "--epochs" -> epochs = Integer.parseInt(value);
                     case "--seed" -> seed = Long.parseLong(value);
+                    case "--min-total-stops" -> minTotalStops = Integer.parseInt(value);
+                    case "--max-total-stops" -> maxTotalStops = Integer.parseInt(value);
                     default -> throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
             }
@@ -586,7 +626,16 @@ public final class TrainModel {
             if (epochs <= 0) {
                 throw new IllegalArgumentException("--epochs must be positive");
             }
-            return new Config(histDir, output, valMod, valRem, epochs, seed);
+            if (minTotalStops != null && minTotalStops < 0) {
+                throw new IllegalArgumentException("--min-total-stops must be non-negative");
+            }
+            if (maxTotalStops != null && maxTotalStops < 0) {
+                throw new IllegalArgumentException("--max-total-stops must be non-negative");
+            }
+            if (minTotalStops != null && maxTotalStops != null && minTotalStops > maxTotalStops) {
+                throw new IllegalArgumentException("--min-total-stops cannot be greater than --max-total-stops");
+            }
+            return new Config(histDir, output, valMod, valRem, epochs, seed, minTotalStops, maxTotalStops);
         }
     }
 
