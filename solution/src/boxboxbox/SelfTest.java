@@ -87,6 +87,15 @@ public final class SelfTest {
         model.global_age[FeatureSchema.compoundIndex("SOFT")][1] = -0.75;
         model.temp_age[FeatureSchema.tempBucket(30)][FeatureSchema.compoundIndex("HARD")][3] = 0.25;
         model.global_phase[FeatureSchema.compoundIndex("SOFT")][FeatureSchema.phaseBucket(1, 5)] = -0.1;
+        model.track_phase[FeatureSchema.trackIndex("Monza")][FeatureSchema.compoundIndex("SOFT")]
+                        [FeatureSchema.phaseBucket(1, 5)] =
+                -0.2;
+        model.track_transition_lap[FeatureSchema.trackIndex("Monza")][0][FeatureSchema.compoundIndex("SOFT")]
+                        [FeatureSchema.compoundIndex("HARD")][2] =
+                -0.15;
+        model.track_transition_phase[FeatureSchema.trackIndex("Monza")][0][FeatureSchema.compoundIndex("SOFT")]
+                        [FeatureSchema.compoundIndex("HARD")][FeatureSchema.phaseBucket(2, 5)] =
+                0.3;
 
         Path tempFile = Files.createTempFile("boxboxbox-model", ".json");
         try {

@@ -3,7 +3,7 @@ package boxboxbox;
 import java.util.Arrays;
 
 final class FeatureSchema {
-    static final int MODEL_VERSION = 2;
+    static final int MODEL_VERSION = 3;
     static final int MAX_AGE = 70;
     static final int AGE_BUCKETS = MAX_AGE + 1;
     static final int MAX_LAP = 70;

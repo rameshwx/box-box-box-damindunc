@@ -111,7 +111,12 @@ public final class TrainModel {
                     DriverFeatures better = ordered[betterIndex];
                     for (int worseIndex = betterIndex + 1; worseIndex < ordered.length; worseIndex++) {
                         DriverFeatures worse = ordered[worseIndex];
-                        updatePair(model, state, better, worse);
+                        updatePair(
+                                model,
+                                state,
+                                better,
+                                worse,
+                                config.pairWeighting.weightForGap(worseIndex - betterIndex));
                         pairCount++;
                     }
                 }
@@ -148,20 +153,21 @@ public final class TrainModel {
         return metrics;
     }
 
-    private static void updatePair(Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse) {
+    private static void updatePair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double pairWeight) {
         double delta = worse.score(model) - better.score(model);
-        double logistic = inverseLogit(delta);
-        updateAgePair(model, state, better, worse, logistic);
-        updateLapPair(model, state, better, worse, logistic);
-        updatePhasePair(model, state, better, worse, logistic);
-        updateAgeLapPair(model, state, better, worse, logistic);
-        updateAgePhasePair(model, state, better, worse, logistic);
-        updateTransitionPair(model, state, better, worse, logistic);
-        updateTransitionPhasePair(model, state, better, worse, logistic);
+        double gradientScale = inverseLogit(delta) * pairWeight;
+        updateAgePair(model, state, better, worse, gradientScale);
+        updateLapPair(model, state, better, worse, gradientScale);
+        updatePhasePair(model, state, better, worse, gradientScale);
+        updateAgeLapPair(model, state, better, worse, gradientScale);
+        updateAgePhasePair(model, state, better, worse, gradientScale);
+        updateTransitionPair(model, state, better, worse, gradientScale);
+        updateTransitionPhasePair(model, state, better, worse, gradientScale);
     }
 
     private static void updateAgePair(
-            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double gradientScale) {
         int betterCursor = 0;
         int worseCursor = 0;
 
@@ -187,33 +193,33 @@ public final class TrainModel {
 
             int compoundIndex = FeatureSchema.compoundFromAgeFlat(flatIndex);
             int age = FeatureSchema.ageFromFlat(flatIndex);
-            apply(model.global_age, state.global_age_accum, compoundIndex, age, logistic, diffCount);
+            apply(model.global_age, state.global_age_accum, compoundIndex, age, gradientScale, diffCount);
             apply(
                     model.temp_age[better.tempBucket],
                     state.temp_age_accum[better.tempBucket],
                     compoundIndex,
                     age,
-                    logistic,
+                    gradientScale,
                     diffCount);
             apply(
                     model.base_age[better.baseBucket],
                     state.base_age_accum[better.baseBucket],
                     compoundIndex,
                     age,
-                    logistic,
+                    gradientScale,
                     diffCount);
             apply(
                     model.track_age[better.trackIndex],
                     state.track_age_accum[better.trackIndex],
                     compoundIndex,
                     age,
-                    logistic,
+                    gradientScale,
                     diffCount);
         }
     }
 
     private static void updateLapPair(
-            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double gradientScale) {
         int betterCursor = 0;
         int worseCursor = 0;
 
@@ -239,33 +245,33 @@ public final class TrainModel {
 
             int compoundIndex = FeatureSchema.compoundFromLapFlat(flatIndex);
             int lap = FeatureSchema.lapFromFlat(flatIndex);
-            apply(model.global_lap, state.global_lap_accum, compoundIndex, lap, logistic, diffCount);
+            apply(model.global_lap, state.global_lap_accum, compoundIndex, lap, gradientScale, diffCount);
             apply(
                     model.temp_lap[better.tempBucket],
                     state.temp_lap_accum[better.tempBucket],
                     compoundIndex,
                     lap,
-                    logistic,
+                    gradientScale,
                     diffCount);
             apply(
                     model.base_lap[better.baseBucket],
                     state.base_lap_accum[better.baseBucket],
                     compoundIndex,
                     lap,
-                    logistic,
+                    gradientScale,
                     diffCount);
             apply(
                     model.track_lap[better.trackIndex],
                     state.track_lap_accum[better.trackIndex],
                     compoundIndex,
                     lap,
-                    logistic,
+                    gradientScale,
                     diffCount);
         }
     }
 
     private static void updatePhasePair(
-            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double gradientScale) {
         int betterCursor = 0;
         int worseCursor = 0;
 
@@ -293,12 +299,19 @@ public final class TrainModel {
 
             int compoundIndex = FeatureSchema.compoundFromPhaseFlat(flatIndex);
             int phase = FeatureSchema.phaseFromFlat(flatIndex);
-            apply(model.global_phase, state.global_phase_accum, compoundIndex, phase, logistic, diffCount);
+            apply(model.global_phase, state.global_phase_accum, compoundIndex, phase, gradientScale, diffCount);
+            apply(
+                    model.track_phase[better.trackIndex],
+                    state.track_phase_accum[better.trackIndex],
+                    compoundIndex,
+                    phase,
+                    gradientScale,
+                    diffCount);
         }
     }
 
     private static void updateAgeLapPair(
-            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double gradientScale) {
         int betterCursor = 0;
         int worseCursor = 0;
 
@@ -327,12 +340,19 @@ public final class TrainModel {
             int compoundIndex = FeatureSchema.compoundFromAgeLapFlat(flatIndex);
             int age = FeatureSchema.ageFromAgeLapFlat(flatIndex);
             int lap = FeatureSchema.lapFromAgeLapFlat(flatIndex);
-            apply(model.global_age_lap, state.global_age_lap_accum, compoundIndex, age, lap, logistic, diffCount);
+            apply(
+                    model.global_age_lap,
+                    state.global_age_lap_accum,
+                    compoundIndex,
+                    age,
+                    lap,
+                    gradientScale,
+                    diffCount);
         }
     }
 
     private static void updateAgePhasePair(
-            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double gradientScale) {
         int betterCursor = 0;
         int worseCursor = 0;
 
@@ -362,12 +382,19 @@ public final class TrainModel {
             int compoundIndex = FeatureSchema.compoundFromAgePhaseFlat(flatIndex);
             int age = FeatureSchema.ageFromAgePhaseFlat(flatIndex);
             int phase = FeatureSchema.phaseFromAgePhaseFlat(flatIndex);
-            apply(model.global_age_phase, state.global_age_phase_accum, compoundIndex, age, phase, logistic, diffCount);
+            apply(
+                    model.global_age_phase,
+                    state.global_age_phase_accum,
+                    compoundIndex,
+                    age,
+                    phase,
+                    gradientScale,
+                    diffCount);
         }
     }
 
     private static void updateTransitionPair(
-            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double gradientScale) {
         int betterCursor = 0;
         int worseCursor = 0;
 
@@ -405,13 +432,22 @@ public final class TrainModel {
                     fromCompound,
                     toCompound,
                     lap,
-                    logistic,
+                    gradientScale,
+                    diffCount);
+            apply(
+                    model.track_transition_lap[better.trackIndex],
+                    state.track_transition_lap_accum[better.trackIndex],
+                    stopSlot,
+                    fromCompound,
+                    toCompound,
+                    lap,
+                    gradientScale,
                     diffCount);
         }
     }
 
     private static void updateTransitionPhasePair(
-            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double logistic) {
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double gradientScale) {
         int betterCursor = 0;
         int worseCursor = 0;
 
@@ -449,7 +485,16 @@ public final class TrainModel {
                     fromCompound,
                     toCompound,
                     phase,
-                    logistic,
+                    gradientScale,
+                    diffCount);
+            apply(
+                    model.track_transition_phase[better.trackIndex],
+                    state.track_transition_phase_accum[better.trackIndex],
+                    stopSlot,
+                    fromCompound,
+                    toCompound,
+                    phase,
+                    gradientScale,
                     diffCount);
         }
     }
@@ -548,6 +593,38 @@ public final class TrainModel {
         return race.race_config.total_laps;
     }
 
+    private enum PairWeighting {
+        NONE {
+            @Override
+            double weightForGap(int gap) {
+                return 1.0;
+            }
+        },
+        DISTANCE_SQRT {
+            @Override
+            double weightForGap(int gap) {
+                return Math.sqrt(gap);
+            }
+        },
+        DISTANCE_LINEAR {
+            @Override
+            double weightForGap(int gap) {
+                return gap;
+            }
+        };
+
+        abstract double weightForGap(int gap);
+
+        static PairWeighting parse(String value) {
+            return switch (value) {
+                case "none" -> NONE;
+                case "distance_sqrt" -> DISTANCE_SQRT;
+                case "distance_linear" -> DISTANCE_LINEAR;
+                default -> throw new IllegalArgumentException("Unknown --pair-weighting: " + value);
+            };
+        }
+    }
+
     private static final class Config {
         final Path histDir;
         final Path output;
@@ -555,6 +632,7 @@ public final class TrainModel {
         final int valRem;
         final int epochs;
         final long seed;
+        final PairWeighting pairWeighting;
         final Integer minTotalStops;
         final Integer maxTotalStops;
         final Integer minTotalLaps;
@@ -570,6 +648,7 @@ public final class TrainModel {
                 int valRem,
                 int epochs,
                 long seed,
+                PairWeighting pairWeighting,
                 Integer minTotalStops,
                 Integer maxTotalStops,
                 Integer minTotalLaps,
@@ -583,6 +662,7 @@ public final class TrainModel {
             this.valRem = valRem;
             this.epochs = epochs;
             this.seed = seed;
+            this.pairWeighting = pairWeighting;
             this.minTotalStops = minTotalStops;
             this.maxTotalStops = maxTotalStops;
             this.minTotalLaps = minTotalLaps;
@@ -636,6 +716,7 @@ public final class TrainModel {
             int valRem = 0;
             int epochs = 5;
             long seed = 20260314L;
+            PairWeighting pairWeighting = PairWeighting.NONE;
             Integer minTotalStops = null;
             Integer maxTotalStops = null;
             Integer minTotalLaps = null;
@@ -660,6 +741,7 @@ public final class TrainModel {
                     case "--val-rem" -> valRem = Integer.parseInt(value);
                     case "--epochs" -> epochs = Integer.parseInt(value);
                     case "--seed" -> seed = Long.parseLong(value);
+                    case "--pair-weighting" -> pairWeighting = PairWeighting.parse(value);
                     case "--min-total-stops" -> minTotalStops = Integer.parseInt(value);
                     case "--max-total-stops" -> maxTotalStops = Integer.parseInt(value);
                     case "--min-total-laps" -> minTotalLaps = Integer.parseInt(value);
@@ -708,6 +790,7 @@ public final class TrainModel {
                     valRem,
                     epochs,
                     seed,
+                    pairWeighting,
                     minTotalStops,
                     maxTotalStops,
                     minTotalLaps,
@@ -734,6 +817,8 @@ public final class TrainModel {
         final double[][][] track_lap_accum =
                 new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
         final double[][] global_phase_accum = new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        final double[][][] track_phase_accum =
+                new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
         final double[][][] global_age_lap_accum =
                 new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS][FeatureSchema.LAP_BUCKETS];
         final double[][][] global_age_phase_accum =
@@ -741,9 +826,15 @@ public final class TrainModel {
         final double[][][][] transition_weight_accum =
                 new double[FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length]
                         [FeatureSchema.LAP_BUCKETS];
+        final double[][][][][] track_transition_lap_accum =
+                new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length]
+                        [FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
         final double[][][][] transition_phase_weight_accum =
                 new double[FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length]
                         [FeatureSchema.PHASE_BUCKETS];
+        final double[][][][][] track_transition_phase_accum =
+                new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length]
+                        [FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
     }
 
     private static final class ValidationMetrics {

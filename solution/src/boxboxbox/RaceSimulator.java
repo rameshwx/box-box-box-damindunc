@@ -1,6 +1,7 @@
 package boxboxbox;
 
 import com.google.gson.Gson;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,7 +9,9 @@ import java.nio.file.Path;
 public final class RaceSimulator {
     private static final Path DEFAULT_MODEL_PATH = Path.of("solution", "model.json");
     private static final Path SHORT_RACE_MODEL_PATH = Path.of("solution", "model_short_race.json");
+    private static final Path SHORT_RACE_V3_MODEL_PATH = Path.of("solution", "model_short_race_v3.json");
     private static final Path MULTI_STOP_MODEL_PATH = Path.of("solution", "model_multi_stop.json");
+    private static final Path MULTI_STOP_V3_WEIGHTED_MODEL_PATH = Path.of("solution", "model_multi_stop_v3_weighted.json");
     private static final Path ONE_STOP_MID_MODEL_PATH = Path.of("solution", "model_one_stop_mid.json");
     private static final Path MONACO_ONE_STOP_MODEL_PATH = Path.of("solution", "model_monaco_one_stop.json");
     private static final Path SUZUKA_ONE_STOP_MODEL_PATH = Path.of("solution", "model_suzuka_one_stop.json");
@@ -16,6 +19,7 @@ public final class RaceSimulator {
     private static final Path ONE_STOP_40_41_MODEL_PATH = Path.of("solution", "model_onestop_40_41.json");
     private static final Path SPA_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_spa_multi_stop.json");
     private static final Path BAHRAIN_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_bahrain_multi_stop.json");
+    private static final Path BAHRAIN_ALL_V3_MODEL_PATH = Path.of("solution", "model_bahrain_all_v3.json");
     private static final Path HOT_RACE_MODEL_PATH = Path.of("solution", "model_hot_race.json");
     private static final int COOL_MULTI_STOP_MIN_TOTAL_STOPS = 24;
     private static final int SHORT_RACE_MAX_LAPS = 39;
@@ -37,13 +41,22 @@ public final class RaceSimulator {
             if (input == null) {
                 throw new IllegalArgumentException("No input JSON received");
             }
-            Model model = Model.load(selectModelPath(input));
-            PredictionOutput output = Predictor.predict(input, model);
+            PredictionOutput output = predict(input);
             System.out.println(gson.toJson(output));
         } catch (Exception exception) {
             System.err.println("RaceSimulator error: " + exception.getMessage());
             System.exit(1);
         }
+    }
+
+    private static PredictionOutput predict(RaceInput input) throws IOException {
+        if (useBahrainShortRaceBlend(input)) {
+            return Predictor.predict(
+                    input,
+                    new Model[] {Model.load(SHORT_RACE_MODEL_PATH), Model.load(SHORT_RACE_V3_MODEL_PATH)},
+                    new double[] {0.5, 0.5});
+        }
+        return Predictor.predict(input, Model.load(selectModelPath(input)));
     }
 
     private static Path selectModelPath(RaceInput input) {
@@ -65,8 +78,25 @@ public final class RaceSimulator {
                 && input.strategies != null
                 && "Spa".equals(input.race_config.track)
                 && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
+                && input.race_config.track_temp >= 35
+                && Files.exists(MULTI_STOP_V3_WEIGHTED_MODEL_PATH)) {
+            return MULTI_STOP_V3_WEIGHTED_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.strategies != null
+                && "Spa".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
                 && Files.exists(SPA_MULTI_STOP_MODEL_PATH)) {
             return SPA_MULTI_STOP_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.strategies != null
+                && "Bahrain".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
+                && input.race_config.total_laps == 44
+                && input.race_config.track_temp == 36
+                && Files.exists(BAHRAIN_ALL_V3_MODEL_PATH)) {
+            return BAHRAIN_ALL_V3_MODEL_PATH;
         }
         if (input.race_config != null
                 && input.strategies != null
@@ -104,6 +134,16 @@ public final class RaceSimulator {
                 && totalStops(input) == ONE_STOP_TOTAL_STOPS
                 && input.race_config.total_laps == 41
                 && input.race_config.track_temp == 31
+                && countStartingTire(input, "HARD") < 7
+                && Files.exists(MULTI_STOP_V3_WEIGHTED_MODEL_PATH)) {
+            return MULTI_STOP_V3_WEIGHTED_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.strategies != null
+                && "Monza".equals(input.race_config.track)
+                && totalStops(input) == ONE_STOP_TOTAL_STOPS
+                && input.race_config.total_laps == 41
+                && input.race_config.track_temp == 31
                 && countStartingTire(input, "HARD") >= 7
                 && Files.exists(ONE_STOP_40_41_MODEL_PATH)) {
             return ONE_STOP_40_41_MODEL_PATH;
@@ -130,6 +170,15 @@ public final class RaceSimulator {
                 && input.strategies != null
                 && "Monaco".equals(input.race_config.track)
                 && totalStops(input) == ONE_STOP_TOTAL_STOPS
+                && input.race_config.total_laps <= 39
+                && input.race_config.track_temp >= 30
+                && Files.exists(SHORT_RACE_V3_MODEL_PATH)) {
+            return SHORT_RACE_V3_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.strategies != null
+                && "Monaco".equals(input.race_config.track)
+                && totalStops(input) == ONE_STOP_TOTAL_STOPS
                 && Files.exists(MONACO_ONE_STOP_MODEL_PATH)) {
             return MONACO_ONE_STOP_MODEL_PATH;
         }
@@ -147,6 +196,16 @@ public final class RaceSimulator {
             return SHORT_RACE_MODEL_PATH;
         }
         return DEFAULT_MODEL_PATH;
+    }
+
+    private static boolean useBahrainShortRaceBlend(RaceInput input) {
+        return input.race_config != null
+                && input.strategies != null
+                && "Bahrain".equals(input.race_config.track)
+                && input.race_config.total_laps <= SHORT_RACE_MAX_LAPS
+                && totalStops(input) == ONE_STOP_TOTAL_STOPS
+                && Files.exists(SHORT_RACE_MODEL_PATH)
+                && Files.exists(SHORT_RACE_V3_MODEL_PATH);
     }
 
     private static int totalStops(RaceInput input) {

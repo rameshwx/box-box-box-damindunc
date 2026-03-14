@@ -102,6 +102,7 @@ final class DriverFeatures {
             int phase = FeatureSchema.phaseFromFlat(flatIndex);
             double count = activePhaseCounts[index];
             score += count * model.global_phase[compoundIndex][phase];
+            score += count * model.track_phase[trackIndex][compoundIndex][phase];
         }
         for (int index = 0; index < activeAgeLapFlatIndices.length; index++) {
             int flatIndex = activeAgeLapFlatIndices[index];
@@ -126,6 +127,8 @@ final class DriverFeatures {
             int toCompound = FeatureSchema.toCompoundFromTransitionFlat(flatIndex);
             int lap = FeatureSchema.lapFromTransitionFlat(flatIndex);
             score += activeTransitionCounts[index] * model.transition_weight[stopSlot][fromCompound][toCompound][lap];
+            score += activeTransitionCounts[index]
+                    * model.track_transition_lap[trackIndex][stopSlot][fromCompound][toCompound][lap];
         }
         for (int index = 0; index < activeTransitionPhaseFlatIndices.length; index++) {
             int flatIndex = activeTransitionPhaseFlatIndices[index];
@@ -135,6 +138,8 @@ final class DriverFeatures {
             int phase = FeatureSchema.phaseFromTransitionPhaseFlat(flatIndex);
             score += activeTransitionPhaseCounts[index]
                     * model.transition_phase_weight[stopSlot][fromCompound][toCompound][phase];
+            score += activeTransitionPhaseCounts[index]
+                    * model.track_transition_phase[trackIndex][stopSlot][fromCompound][toCompound][phase];
         }
         return score;
     }

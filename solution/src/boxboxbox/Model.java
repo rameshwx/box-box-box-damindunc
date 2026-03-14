@@ -38,6 +38,8 @@ final class Model {
     double[][][] track_lap =
             new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
     double[][] global_phase = new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+    double[][][] track_phase =
+            new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
     double[][][] global_age_lap =
             new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.AGE_BUCKETS][FeatureSchema.LAP_BUCKETS];
     double[][][] global_age_phase =
@@ -45,9 +47,15 @@ final class Model {
     double[][][][] transition_weight =
             new double[FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length]
                     [FeatureSchema.LAP_BUCKETS];
+    double[][][][][] track_transition_lap =
+            new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length]
+                    [FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
     double[][][][] transition_phase_weight =
             new double[FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length]
                     [FeatureSchema.PHASE_BUCKETS];
+    double[][][][][] track_transition_phase =
+            new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length]
+                    [FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
 
     static Model zero() {
         return new Model();
@@ -60,6 +68,7 @@ final class Model {
             if (model == null) {
                 throw new IOException("Model file is empty: " + path);
             }
+            model = upgradeLegacyIfNeeded(model);
             model.validate();
             return model;
         }
@@ -105,10 +114,13 @@ final class Model {
         requireLapCube(base_lap, FeatureSchema.BASE_BUCKETS, "base_lap");
         requireLapCube(track_lap, FeatureSchema.TRACKS.length, "track_lap");
         requirePhaseShape(global_phase, "global_phase");
+        requirePhaseCube(track_phase, FeatureSchema.TRACKS.length, "track_phase");
         requireAgeLapShape(global_age_lap, "global_age_lap");
         requireAgePhaseShape(global_age_phase, "global_age_phase");
         requireTransitionShape(transition_weight, "transition_weight");
+        requireTrackTransitionShape(track_transition_lap, "track_transition_lap");
         requireTransitionPhaseShape(transition_phase_weight, "transition_phase_weight");
+        requireTrackTransitionPhaseShape(track_transition_phase, "track_transition_phase");
     }
 
     Model deepCopy() {
@@ -133,10 +145,13 @@ final class Model {
         copy.base_lap = deepCopy(base_lap);
         copy.track_lap = deepCopy(track_lap);
         copy.global_phase = deepCopy(global_phase);
+        copy.track_phase = deepCopy(track_phase);
         copy.global_age_lap = deepCopy(global_age_lap);
         copy.global_age_phase = deepCopy(global_age_phase);
         copy.transition_weight = deepCopy(transition_weight);
+        copy.track_transition_lap = deepCopy(track_transition_lap);
         copy.transition_phase_weight = deepCopy(transition_phase_weight);
+        copy.track_transition_phase = deepCopy(track_transition_phase);
         return copy;
     }
 
@@ -188,6 +203,15 @@ final class Model {
             if (phases == null || phases.length != FeatureSchema.PHASE_BUCKETS) {
                 throw new IllegalArgumentException(name + " has invalid phase dimension");
             }
+        }
+    }
+
+    private static void requirePhaseCube(double[][][] values, int outerLength, String name) {
+        if (values == null || values.length != outerLength) {
+            throw new IllegalArgumentException(name + " has invalid outer dimension");
+        }
+        for (int index = 0; index < values.length; index++) {
+            requirePhaseShape(values[index], name + "[" + index + "]");
         }
     }
 
@@ -265,6 +289,24 @@ final class Model {
         }
     }
 
+    private static void requireTrackTransitionShape(double[][][][][] values, String name) {
+        if (values == null || values.length != FeatureSchema.TRACKS.length) {
+            throw new IllegalArgumentException(name + " has invalid track dimension");
+        }
+        for (int index = 0; index < values.length; index++) {
+            requireTransitionShape(values[index], name + "[" + index + "]");
+        }
+    }
+
+    private static void requireTrackTransitionPhaseShape(double[][][][][] values, String name) {
+        if (values == null || values.length != FeatureSchema.TRACKS.length) {
+            throw new IllegalArgumentException(name + " has invalid track dimension");
+        }
+        for (int index = 0; index < values.length; index++) {
+            requireTransitionPhaseShape(values[index], name + "[" + index + "]");
+        }
+    }
+
     private static double[][] deepCopy(double[][] source) {
         double[][] copy = new double[source.length][];
         for (int index = 0; index < source.length; index++) {
@@ -287,6 +329,38 @@ final class Model {
             copy[index] = deepCopy(source[index]);
         }
         return copy;
+    }
+
+    private static double[][][][][] deepCopy(double[][][][][] source) {
+        double[][][][][] copy = new double[source.length][][][][];
+        for (int index = 0; index < source.length; index++) {
+            copy[index] = deepCopy(source[index]);
+        }
+        return copy;
+    }
+
+    private static Model upgradeLegacyIfNeeded(Model model) {
+        if (model.version == FeatureSchema.MODEL_VERSION) {
+            return model;
+        }
+        if (model.version == 2) {
+            model.version = FeatureSchema.MODEL_VERSION;
+        }
+        if (model.version == FeatureSchema.MODEL_VERSION) {
+            if (model.track_phase == null) {
+                model.track_phase = new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length]
+                        [FeatureSchema.PHASE_BUCKETS];
+            }
+            if (model.track_transition_lap == null) {
+                model.track_transition_lap = new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS]
+                        [FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
+            }
+            if (model.track_transition_phase == null) {
+                model.track_transition_phase = new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS]
+                        [FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+            }
+        }
+        return model;
     }
 
     private static Gson gson() {
