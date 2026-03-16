@@ -56,6 +56,27 @@ final class Model {
     double[][][][][] track_transition_phase =
             new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length]
                     [FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+    double[] monaco_stop_count_weight = new double[FeatureSchema.STOP_COUNT_BUCKETS];
+    double[] monaco_pit_penalty_by_stop_count = new double[FeatureSchema.STOP_COUNT_BUCKETS];
+    double[] monaco_only_stop_phase = new double[FeatureSchema.PHASE_BUCKETS];
+    double[] monaco_final_compound = new double[FeatureSchema.COMPOUNDS.length];
+    double[] monaco_final_stop_phase = new double[FeatureSchema.PHASE_BUCKETS];
+    double[][] monaco_start_final_compound =
+            new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length];
+    double[][] monaco_stop_count_by_final_compound =
+            new double[FeatureSchema.STOP_COUNT_BUCKETS][FeatureSchema.COMPOUNDS.length];
+    double[][] monaco_only_stop_phase_by_final_compound =
+            new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+    double[][] monaco_final_compound_by_final_stop_phase =
+            new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+    double[][][] monaco_only_stop_start_final_phase = new double[FeatureSchema.COMPOUNDS.length]
+            [FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+    double[] monaco_driver_bias = new double[FeatureSchema.DRIVER_COUNT];
+    double[][] monaco_driver_by_stop_count = new double[FeatureSchema.DRIVER_COUNT][FeatureSchema.STOP_COUNT_BUCKETS];
+    double[][] monaco_driver_by_final_compound =
+            new double[FeatureSchema.DRIVER_COUNT][FeatureSchema.COMPOUNDS.length];
+    double[] monaco_late_soft_finish_phase = new double[FeatureSchema.PHASE_BUCKETS];
+    double[] monaco_two_stop_final_hard_phase = new double[FeatureSchema.PHASE_BUCKETS];
 
     static Model zero() {
         return new Model();
@@ -121,6 +142,57 @@ final class Model {
         requireTrackTransitionShape(track_transition_lap, "track_transition_lap");
         requireTransitionPhaseShape(transition_phase_weight, "transition_phase_weight");
         requireTrackTransitionPhaseShape(track_transition_phase, "track_transition_phase");
+        requireVectorShape(monaco_stop_count_weight, FeatureSchema.STOP_COUNT_BUCKETS, "monaco_stop_count_weight");
+        requireVectorShape(
+                monaco_pit_penalty_by_stop_count,
+                FeatureSchema.STOP_COUNT_BUCKETS,
+                "monaco_pit_penalty_by_stop_count");
+        requireVectorShape(monaco_only_stop_phase, FeatureSchema.PHASE_BUCKETS, "monaco_only_stop_phase");
+        requireVectorShape(monaco_final_compound, FeatureSchema.COMPOUNDS.length, "monaco_final_compound");
+        requireVectorShape(monaco_final_stop_phase, FeatureSchema.PHASE_BUCKETS, "monaco_final_stop_phase");
+        requireMatrixShape(
+                monaco_start_final_compound,
+                FeatureSchema.COMPOUNDS.length,
+                FeatureSchema.COMPOUNDS.length,
+                "monaco_start_final_compound");
+        requireMatrixShape(
+                monaco_stop_count_by_final_compound,
+                FeatureSchema.STOP_COUNT_BUCKETS,
+                FeatureSchema.COMPOUNDS.length,
+                "monaco_stop_count_by_final_compound");
+        requireMatrixShape(
+                monaco_only_stop_phase_by_final_compound,
+                FeatureSchema.COMPOUNDS.length,
+                FeatureSchema.PHASE_BUCKETS,
+                "monaco_only_stop_phase_by_final_compound");
+        requireMatrixShape(
+                monaco_final_compound_by_final_stop_phase,
+                FeatureSchema.COMPOUNDS.length,
+                FeatureSchema.PHASE_BUCKETS,
+                "monaco_final_compound_by_final_stop_phase");
+        requirePhaseCube(
+                monaco_only_stop_start_final_phase,
+                FeatureSchema.COMPOUNDS.length,
+                "monaco_only_stop_start_final_phase");
+        requireVectorShape(monaco_driver_bias, FeatureSchema.DRIVER_COUNT, "monaco_driver_bias");
+        requireMatrixShape(
+                monaco_driver_by_stop_count,
+                FeatureSchema.DRIVER_COUNT,
+                FeatureSchema.STOP_COUNT_BUCKETS,
+                "monaco_driver_by_stop_count");
+        requireMatrixShape(
+                monaco_driver_by_final_compound,
+                FeatureSchema.DRIVER_COUNT,
+                FeatureSchema.COMPOUNDS.length,
+                "monaco_driver_by_final_compound");
+        requireVectorShape(
+                monaco_late_soft_finish_phase,
+                FeatureSchema.PHASE_BUCKETS,
+                "monaco_late_soft_finish_phase");
+        requireVectorShape(
+                monaco_two_stop_final_hard_phase,
+                FeatureSchema.PHASE_BUCKETS,
+                "monaco_two_stop_final_hard_phase");
     }
 
     Model deepCopy() {
@@ -152,6 +224,21 @@ final class Model {
         copy.track_transition_lap = deepCopy(track_transition_lap);
         copy.transition_phase_weight = deepCopy(transition_phase_weight);
         copy.track_transition_phase = deepCopy(track_transition_phase);
+        copy.monaco_stop_count_weight = monaco_stop_count_weight.clone();
+        copy.monaco_pit_penalty_by_stop_count = monaco_pit_penalty_by_stop_count.clone();
+        copy.monaco_only_stop_phase = monaco_only_stop_phase.clone();
+        copy.monaco_final_compound = monaco_final_compound.clone();
+        copy.monaco_final_stop_phase = monaco_final_stop_phase.clone();
+        copy.monaco_start_final_compound = deepCopy(monaco_start_final_compound);
+        copy.monaco_stop_count_by_final_compound = deepCopy(monaco_stop_count_by_final_compound);
+        copy.monaco_only_stop_phase_by_final_compound = deepCopy(monaco_only_stop_phase_by_final_compound);
+        copy.monaco_final_compound_by_final_stop_phase = deepCopy(monaco_final_compound_by_final_stop_phase);
+        copy.monaco_only_stop_start_final_phase = deepCopy(monaco_only_stop_start_final_phase);
+        copy.monaco_driver_bias = monaco_driver_bias.clone();
+        copy.monaco_driver_by_stop_count = deepCopy(monaco_driver_by_stop_count);
+        copy.monaco_driver_by_final_compound = deepCopy(monaco_driver_by_final_compound);
+        copy.monaco_late_soft_finish_phase = monaco_late_soft_finish_phase.clone();
+        copy.monaco_two_stop_final_hard_phase = monaco_two_stop_final_hard_phase.clone();
         return copy;
     }
 
@@ -307,6 +394,23 @@ final class Model {
         }
     }
 
+    private static void requireVectorShape(double[] values, int length, String name) {
+        if (values == null || values.length != length) {
+            throw new IllegalArgumentException(name + " has invalid dimension");
+        }
+    }
+
+    private static void requireMatrixShape(double[][] values, int rows, int cols, String name) {
+        if (values == null || values.length != rows) {
+            throw new IllegalArgumentException(name + " has invalid row dimension");
+        }
+        for (double[] row : values) {
+            if (row == null || row.length != cols) {
+                throw new IllegalArgumentException(name + " has invalid column dimension");
+            }
+        }
+    }
+
     private static double[][] deepCopy(double[][] source) {
         double[][] copy = new double[source.length][];
         for (int index = 0; index < source.length; index++) {
@@ -340,27 +444,80 @@ final class Model {
     }
 
     private static Model upgradeLegacyIfNeeded(Model model) {
-        if (model.version == FeatureSchema.MODEL_VERSION) {
-            return model;
-        }
-        if (model.version == 2) {
+        if (model.version > 0 && model.version < FeatureSchema.MODEL_VERSION) {
             model.version = FeatureSchema.MODEL_VERSION;
         }
         if (model.version == FeatureSchema.MODEL_VERSION) {
-            if (model.track_phase == null) {
-                model.track_phase = new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length]
-                        [FeatureSchema.PHASE_BUCKETS];
-            }
-            if (model.track_transition_lap == null) {
-                model.track_transition_lap = new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS]
-                        [FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
-            }
-            if (model.track_transition_phase == null) {
-                model.track_transition_phase = new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS]
-                        [FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
-            }
+            ensureOptionalFields(model);
         }
         return model;
+    }
+
+    private static void ensureOptionalFields(Model model) {
+        if (model.track_phase == null) {
+            model.track_phase =
+                    new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        }
+        if (model.track_transition_lap == null) {
+            model.track_transition_lap = new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS]
+                    [FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.LAP_BUCKETS];
+        }
+        if (model.track_transition_phase == null) {
+            model.track_transition_phase = new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS]
+                    [FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        }
+        if (model.monaco_stop_count_weight == null) {
+            model.monaco_stop_count_weight = new double[FeatureSchema.STOP_COUNT_BUCKETS];
+        }
+        if (model.monaco_pit_penalty_by_stop_count == null) {
+            model.monaco_pit_penalty_by_stop_count = new double[FeatureSchema.STOP_COUNT_BUCKETS];
+        }
+        if (model.monaco_only_stop_phase == null) {
+            model.monaco_only_stop_phase = new double[FeatureSchema.PHASE_BUCKETS];
+        }
+        if (model.monaco_final_compound == null) {
+            model.monaco_final_compound = new double[FeatureSchema.COMPOUNDS.length];
+        }
+        if (model.monaco_final_stop_phase == null) {
+            model.monaco_final_stop_phase = new double[FeatureSchema.PHASE_BUCKETS];
+        }
+        if (model.monaco_start_final_compound == null) {
+            model.monaco_start_final_compound =
+                    new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length];
+        }
+        if (model.monaco_stop_count_by_final_compound == null) {
+            model.monaco_stop_count_by_final_compound =
+                    new double[FeatureSchema.STOP_COUNT_BUCKETS][FeatureSchema.COMPOUNDS.length];
+        }
+        if (model.monaco_only_stop_phase_by_final_compound == null) {
+            model.monaco_only_stop_phase_by_final_compound =
+                    new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        }
+        if (model.monaco_final_compound_by_final_stop_phase == null) {
+            model.monaco_final_compound_by_final_stop_phase =
+                    new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        }
+        if (model.monaco_only_stop_start_final_phase == null) {
+            model.monaco_only_stop_start_final_phase = new double[FeatureSchema.COMPOUNDS.length]
+                    [FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        }
+        if (model.monaco_driver_bias == null) {
+            model.monaco_driver_bias = new double[FeatureSchema.DRIVER_COUNT];
+        }
+        if (model.monaco_driver_by_stop_count == null) {
+            model.monaco_driver_by_stop_count =
+                    new double[FeatureSchema.DRIVER_COUNT][FeatureSchema.STOP_COUNT_BUCKETS];
+        }
+        if (model.monaco_driver_by_final_compound == null) {
+            model.monaco_driver_by_final_compound =
+                    new double[FeatureSchema.DRIVER_COUNT][FeatureSchema.COMPOUNDS.length];
+        }
+        if (model.monaco_late_soft_finish_phase == null) {
+            model.monaco_late_soft_finish_phase = new double[FeatureSchema.PHASE_BUCKETS];
+        }
+        if (model.monaco_two_stop_final_hard_phase == null) {
+            model.monaco_two_stop_final_hard_phase = new double[FeatureSchema.PHASE_BUCKETS];
+        }
     }
 
     private static Gson gson() {

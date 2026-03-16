@@ -17,18 +17,21 @@ public final class TrainModel {
     private static final double LEARNING_RATE = 0.1;
     private static final double L2 = 1e-5;
     private static final double EPSILON = 1e-12;
+    private static final int MONACO_TRACK_INDEX = FeatureSchema.trackIndex("Monaco");
+    private static double learningRateScale = 1.0;
 
     private TrainModel() {
     }
 
     public static void main(String[] args) throws Exception {
         Config config = Config.parse(args);
+        learningRateScale = config.learningRateScale;
         List<Path> files = historicalFiles(config.histDir);
         if (files.isEmpty()) {
             throw new IllegalArgumentException("No historical files found in " + config.histDir);
         }
 
-        Model model = Model.zero();
+        Model model = config.initModel == null ? Model.zero() : Model.load(config.initModel);
         ValidationMetrics baseline = evaluate(model, files, config);
         Model bestModel = model.deepCopy();
         ValidationMetrics bestMetrics = baseline;
@@ -116,7 +119,8 @@ public final class TrainModel {
                                 state,
                                 better,
                                 worse,
-                                config.pairWeighting.weightForGap(worseIndex - betterIndex));
+                                config.pairWeighting.weightForGap(worseIndex - betterIndex),
+                                config.monacoSummaryOnly);
                         pairCount++;
                     }
                 }
@@ -154,16 +158,24 @@ public final class TrainModel {
     }
 
     private static void updatePair(
-            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double pairWeight) {
+            Model model,
+            OptimizerState state,
+            DriverFeatures better,
+            DriverFeatures worse,
+            double pairWeight,
+            boolean monacoSummaryOnly) {
         double delta = worse.score(model) - better.score(model);
         double gradientScale = inverseLogit(delta) * pairWeight;
-        updateAgePair(model, state, better, worse, gradientScale);
-        updateLapPair(model, state, better, worse, gradientScale);
-        updatePhasePair(model, state, better, worse, gradientScale);
-        updateAgeLapPair(model, state, better, worse, gradientScale);
-        updateAgePhasePair(model, state, better, worse, gradientScale);
-        updateTransitionPair(model, state, better, worse, gradientScale);
-        updateTransitionPhasePair(model, state, better, worse, gradientScale);
+        if (!monacoSummaryOnly) {
+            updateAgePair(model, state, better, worse, gradientScale);
+            updateLapPair(model, state, better, worse, gradientScale);
+            updatePhasePair(model, state, better, worse, gradientScale);
+            updateAgeLapPair(model, state, better, worse, gradientScale);
+            updateAgePhasePair(model, state, better, worse, gradientScale);
+            updateTransitionPair(model, state, better, worse, gradientScale);
+            updateTransitionPhasePair(model, state, better, worse, gradientScale);
+        }
+        updateMonacoSummaryPair(model, state, better, worse, gradientScale);
     }
 
     private static void updateAgePair(
@@ -499,6 +511,261 @@ public final class TrainModel {
         }
     }
 
+    private static void updateMonacoSummaryPair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double gradientScale) {
+        if (better.trackIndex != MONACO_TRACK_INDEX) {
+            return;
+        }
+
+        if (better.driverIndex != worse.driverIndex) {
+            apply(
+                    model.monaco_driver_bias,
+                    state.monaco_driver_bias_accum,
+                    better.driverIndex,
+                    gradientScale,
+                    -1.0);
+            apply(
+                    model.monaco_driver_bias,
+                    state.monaco_driver_bias_accum,
+                    worse.driverIndex,
+                    gradientScale,
+                    1.0);
+        }
+        if (better.driverIndex != worse.driverIndex || better.stopCount != worse.stopCount) {
+            apply(
+                    model.monaco_driver_by_stop_count,
+                    state.monaco_driver_by_stop_count_accum,
+                    better.driverIndex,
+                    better.stopCount,
+                    gradientScale,
+                    -1.0);
+            apply(
+                    model.monaco_driver_by_stop_count,
+                    state.monaco_driver_by_stop_count_accum,
+                    worse.driverIndex,
+                    worse.stopCount,
+                    gradientScale,
+                    1.0);
+        }
+        if (better.driverIndex != worse.driverIndex || better.finalCompoundIndex != worse.finalCompoundIndex) {
+            apply(
+                    model.monaco_driver_by_final_compound,
+                    state.monaco_driver_by_final_compound_accum,
+                    better.driverIndex,
+                    better.finalCompoundIndex,
+                    gradientScale,
+                    -1.0);
+            apply(
+                    model.monaco_driver_by_final_compound,
+                    state.monaco_driver_by_final_compound_accum,
+                    worse.driverIndex,
+                    worse.finalCompoundIndex,
+                    gradientScale,
+                    1.0);
+        }
+
+        if (better.stopCount != worse.stopCount) {
+            apply(
+                    model.monaco_stop_count_weight,
+                    state.monaco_stop_count_weight_accum,
+                    better.stopCount,
+                    gradientScale,
+                    -1.0);
+            apply(
+                    model.monaco_stop_count_weight,
+                    state.monaco_stop_count_weight_accum,
+                    worse.stopCount,
+                    gradientScale,
+                    1.0);
+            apply(
+                    model.monaco_pit_penalty_by_stop_count,
+                    state.monaco_pit_penalty_by_stop_count_accum,
+                    better.stopCount,
+                    gradientScale,
+                    -better.fixedPitPenalty);
+            apply(
+                    model.monaco_pit_penalty_by_stop_count,
+                    state.monaco_pit_penalty_by_stop_count_accum,
+                    worse.stopCount,
+                    gradientScale,
+                    worse.fixedPitPenalty);
+        } else {
+            double diffPitPenalty = worse.fixedPitPenalty - better.fixedPitPenalty;
+            if (diffPitPenalty != 0.0) {
+                apply(
+                        model.monaco_pit_penalty_by_stop_count,
+                        state.monaco_pit_penalty_by_stop_count_accum,
+                        better.stopCount,
+                        gradientScale,
+                        diffPitPenalty);
+            }
+        }
+
+        updateMonacoPhaseSummary(
+                model.monaco_only_stop_phase,
+                state.monaco_only_stop_phase_accum,
+                better.onlyStopPhase,
+                worse.onlyStopPhase,
+                gradientScale);
+        if (better.onlyStopPhase != worse.onlyStopPhase
+                || better.finalCompoundIndex != worse.finalCompoundIndex) {
+            if (better.onlyStopPhase != 0) {
+                apply(
+                        model.monaco_only_stop_phase_by_final_compound,
+                        state.monaco_only_stop_phase_by_final_compound_accum,
+                        better.finalCompoundIndex,
+                        better.onlyStopPhase,
+                        gradientScale,
+                        -1.0);
+            }
+            if (worse.onlyStopPhase != 0) {
+                apply(
+                        model.monaco_only_stop_phase_by_final_compound,
+                        state.monaco_only_stop_phase_by_final_compound_accum,
+                        worse.finalCompoundIndex,
+                        worse.onlyStopPhase,
+                        gradientScale,
+                        1.0);
+            }
+        }
+
+        if (better.finalCompoundIndex != worse.finalCompoundIndex) {
+            apply(
+                    model.monaco_final_compound,
+                    state.monaco_final_compound_accum,
+                    better.finalCompoundIndex,
+                    gradientScale,
+                    -1.0);
+            apply(
+                    model.monaco_final_compound,
+                    state.monaco_final_compound_accum,
+                    worse.finalCompoundIndex,
+                    gradientScale,
+                    1.0);
+        }
+        updateMonacoPhaseSummary(
+                model.monaco_final_stop_phase,
+                state.monaco_final_stop_phase_accum,
+                better.finalStopPhase,
+                worse.finalStopPhase,
+                gradientScale);
+        if (better.stopCount != worse.stopCount || better.finalCompoundIndex != worse.finalCompoundIndex) {
+            apply(
+                    model.monaco_stop_count_by_final_compound,
+                    state.monaco_stop_count_by_final_compound_accum,
+                    better.stopCount,
+                    better.finalCompoundIndex,
+                    gradientScale,
+                    -1.0);
+            apply(
+                    model.monaco_stop_count_by_final_compound,
+                    state.monaco_stop_count_by_final_compound_accum,
+                    worse.stopCount,
+                    worse.finalCompoundIndex,
+                    gradientScale,
+                    1.0);
+        }
+        if (better.finalStopPhase != worse.finalStopPhase || better.finalCompoundIndex != worse.finalCompoundIndex) {
+            if (better.finalStopPhase != 0) {
+                apply(
+                        model.monaco_final_compound_by_final_stop_phase,
+                        state.monaco_final_compound_by_final_stop_phase_accum,
+                        better.finalCompoundIndex,
+                        better.finalStopPhase,
+                        gradientScale,
+                        -1.0);
+            }
+            if (worse.finalStopPhase != 0) {
+                apply(
+                        model.monaco_final_compound_by_final_stop_phase,
+                        state.monaco_final_compound_by_final_stop_phase_accum,
+                        worse.finalCompoundIndex,
+                        worse.finalStopPhase,
+                        gradientScale,
+                        1.0);
+            }
+        }
+
+        if (better.startCompoundIndex != worse.startCompoundIndex
+                || better.finalCompoundIndex != worse.finalCompoundIndex) {
+            apply(
+                    model.monaco_start_final_compound,
+                    state.monaco_start_final_compound_accum,
+                    better.startCompoundIndex,
+                    better.finalCompoundIndex,
+                    gradientScale,
+                    -1.0);
+            apply(
+                    model.monaco_start_final_compound,
+                    state.monaco_start_final_compound_accum,
+                    worse.startCompoundIndex,
+                    worse.finalCompoundIndex,
+                    gradientScale,
+                    1.0);
+        }
+        if (better.onlyStopPhase != worse.onlyStopPhase
+                || better.startCompoundIndex != worse.startCompoundIndex
+                || better.finalCompoundIndex != worse.finalCompoundIndex) {
+            if (better.onlyStopPhase != 0) {
+                apply(
+                        model.monaco_only_stop_start_final_phase,
+                        state.monaco_only_stop_start_final_phase_accum,
+                        better.startCompoundIndex,
+                        better.finalCompoundIndex,
+                        better.onlyStopPhase,
+                        gradientScale,
+                        -1.0);
+            }
+            if (worse.onlyStopPhase != 0) {
+                apply(
+                        model.monaco_only_stop_start_final_phase,
+                        state.monaco_only_stop_start_final_phase_accum,
+                        worse.startCompoundIndex,
+                        worse.finalCompoundIndex,
+                        worse.onlyStopPhase,
+                        gradientScale,
+                        1.0);
+            }
+        }
+
+        updateMonacoPhaseSummary(
+                model.monaco_late_soft_finish_phase,
+                state.monaco_late_soft_finish_phase_accum,
+                better.lateSoftFinishPhase,
+                worse.lateSoftFinishPhase,
+                gradientScale);
+        updateMonacoPhaseSummary(
+                model.monaco_two_stop_final_hard_phase,
+                state.monaco_two_stop_final_hard_phase_accum,
+                better.twoStopFinalHardPhase,
+                worse.twoStopFinalHardPhase,
+                gradientScale);
+    }
+
+    private static void updateMonacoPhaseSummary(
+            double[] weights,
+            double[] accum,
+            int betterPhase,
+            int worsePhase,
+            double gradientScale) {
+        if (betterPhase == worsePhase) {
+            return;
+        }
+        if (betterPhase != 0) {
+            apply(weights, accum, betterPhase, gradientScale, -1.0);
+        }
+        if (worsePhase != 0) {
+            apply(weights, accum, worsePhase, gradientScale, 1.0);
+        }
+    }
+
+    private static void apply(double[] weights, double[] accum, int index, double logistic, double featureValue) {
+        double gradient = -logistic * featureValue + L2 * weights[index];
+        accum[index] += gradient * gradient;
+        double adjustedRate = (LEARNING_RATE * learningRateScale) / Math.sqrt(accum[index] + EPSILON);
+        weights[index] -= adjustedRate * gradient;
+    }
+
     private static void apply(
             double[][] weights,
             double[][] accum,
@@ -508,7 +775,7 @@ public final class TrainModel {
             double featureValue) {
         double gradient = -logistic * featureValue + L2 * weights[compoundIndex][age];
         accum[compoundIndex][age] += gradient * gradient;
-        double adjustedRate = LEARNING_RATE / Math.sqrt(accum[compoundIndex][age] + EPSILON);
+        double adjustedRate = (LEARNING_RATE * learningRateScale) / Math.sqrt(accum[compoundIndex][age] + EPSILON);
         weights[compoundIndex][age] -= adjustedRate * gradient;
     }
 
@@ -522,7 +789,8 @@ public final class TrainModel {
             double featureValue) {
         double gradient = -logistic * featureValue + L2 * weights[compoundIndex][age][lap];
         accum[compoundIndex][age][lap] += gradient * gradient;
-        double adjustedRate = LEARNING_RATE / Math.sqrt(accum[compoundIndex][age][lap] + EPSILON);
+        double adjustedRate =
+                (LEARNING_RATE * learningRateScale) / Math.sqrt(accum[compoundIndex][age][lap] + EPSILON);
         weights[compoundIndex][age][lap] -= adjustedRate * gradient;
     }
 
@@ -537,7 +805,8 @@ public final class TrainModel {
             double featureValue) {
         double gradient = -logistic * featureValue + L2 * weights[stopSlot][fromCompound][toCompound][lap];
         accum[stopSlot][fromCompound][toCompound][lap] += gradient * gradient;
-        double adjustedRate = LEARNING_RATE / Math.sqrt(accum[stopSlot][fromCompound][toCompound][lap] + EPSILON);
+        double adjustedRate = (LEARNING_RATE * learningRateScale)
+                / Math.sqrt(accum[stopSlot][fromCompound][toCompound][lap] + EPSILON);
         weights[stopSlot][fromCompound][toCompound][lap] -= adjustedRate * gradient;
     }
 
@@ -611,6 +880,12 @@ public final class TrainModel {
             double weightForGap(int gap) {
                 return gap;
             }
+        },
+        DISTANCE_INVERSE {
+            @Override
+            double weightForGap(int gap) {
+                return 1.0 / gap;
+            }
         };
 
         abstract double weightForGap(int gap);
@@ -620,6 +895,7 @@ public final class TrainModel {
                 case "none" -> NONE;
                 case "distance_sqrt" -> DISTANCE_SQRT;
                 case "distance_linear" -> DISTANCE_LINEAR;
+                case "distance_inverse" -> DISTANCE_INVERSE;
                 default -> throw new IllegalArgumentException("Unknown --pair-weighting: " + value);
             };
         }
@@ -633,6 +909,9 @@ public final class TrainModel {
         final int epochs;
         final long seed;
         final PairWeighting pairWeighting;
+        final Path initModel;
+        final boolean monacoSummaryOnly;
+        final double learningRateScale;
         final Integer minTotalStops;
         final Integer maxTotalStops;
         final Integer minTotalLaps;
@@ -649,6 +928,9 @@ public final class TrainModel {
                 int epochs,
                 long seed,
                 PairWeighting pairWeighting,
+                Path initModel,
+                boolean monacoSummaryOnly,
+                double learningRateScale,
                 Integer minTotalStops,
                 Integer maxTotalStops,
                 Integer minTotalLaps,
@@ -663,6 +945,9 @@ public final class TrainModel {
             this.epochs = epochs;
             this.seed = seed;
             this.pairWeighting = pairWeighting;
+            this.initModel = initModel;
+            this.monacoSummaryOnly = monacoSummaryOnly;
+            this.learningRateScale = learningRateScale;
             this.minTotalStops = minTotalStops;
             this.maxTotalStops = maxTotalStops;
             this.minTotalLaps = minTotalLaps;
@@ -717,6 +1002,9 @@ public final class TrainModel {
             int epochs = 5;
             long seed = 20260314L;
             PairWeighting pairWeighting = PairWeighting.NONE;
+            Path initModel = null;
+            boolean monacoSummaryOnly = false;
+            double learningRateScale = 1.0;
             Integer minTotalStops = null;
             Integer maxTotalStops = null;
             Integer minTotalLaps = null;
@@ -742,6 +1030,9 @@ public final class TrainModel {
                     case "--epochs" -> epochs = Integer.parseInt(value);
                     case "--seed" -> seed = Long.parseLong(value);
                     case "--pair-weighting" -> pairWeighting = PairWeighting.parse(value);
+                    case "--init-model" -> initModel = Path.of(value);
+                    case "--monaco-summary-only" -> monacoSummaryOnly = Boolean.parseBoolean(value);
+                    case "--learning-rate-scale" -> learningRateScale = Double.parseDouble(value);
                     case "--min-total-stops" -> minTotalStops = Integer.parseInt(value);
                     case "--max-total-stops" -> maxTotalStops = Integer.parseInt(value);
                     case "--min-total-laps" -> minTotalLaps = Integer.parseInt(value);
@@ -761,6 +1052,9 @@ public final class TrainModel {
             }
             if (epochs <= 0) {
                 throw new IllegalArgumentException("--epochs must be positive");
+            }
+            if (learningRateScale <= 0.0) {
+                throw new IllegalArgumentException("--learning-rate-scale must be positive");
             }
             if (minTotalStops != null && minTotalStops < 0) {
                 throw new IllegalArgumentException("--min-total-stops must be non-negative");
@@ -791,6 +1085,9 @@ public final class TrainModel {
                     epochs,
                     seed,
                     pairWeighting,
+                    initModel,
+                    monacoSummaryOnly,
+                    learningRateScale,
                     minTotalStops,
                     maxTotalStops,
                     minTotalLaps,
@@ -835,6 +1132,28 @@ public final class TrainModel {
         final double[][][][][] track_transition_phase_accum =
                 new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS][FeatureSchema.COMPOUNDS.length]
                         [FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        final double[] monaco_stop_count_weight_accum = new double[FeatureSchema.STOP_COUNT_BUCKETS];
+        final double[] monaco_pit_penalty_by_stop_count_accum = new double[FeatureSchema.STOP_COUNT_BUCKETS];
+        final double[] monaco_only_stop_phase_accum = new double[FeatureSchema.PHASE_BUCKETS];
+        final double[] monaco_final_compound_accum = new double[FeatureSchema.COMPOUNDS.length];
+        final double[] monaco_final_stop_phase_accum = new double[FeatureSchema.PHASE_BUCKETS];
+        final double[][] monaco_start_final_compound_accum =
+                new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length];
+        final double[][] monaco_stop_count_by_final_compound_accum =
+                new double[FeatureSchema.STOP_COUNT_BUCKETS][FeatureSchema.COMPOUNDS.length];
+        final double[][] monaco_only_stop_phase_by_final_compound_accum =
+                new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        final double[][] monaco_final_compound_by_final_stop_phase_accum =
+                new double[FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        final double[][][] monaco_only_stop_start_final_phase_accum = new double[FeatureSchema.COMPOUNDS.length]
+                [FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
+        final double[] monaco_driver_bias_accum = new double[FeatureSchema.DRIVER_COUNT];
+        final double[][] monaco_driver_by_stop_count_accum =
+                new double[FeatureSchema.DRIVER_COUNT][FeatureSchema.STOP_COUNT_BUCKETS];
+        final double[][] monaco_driver_by_final_compound_accum =
+                new double[FeatureSchema.DRIVER_COUNT][FeatureSchema.COMPOUNDS.length];
+        final double[] monaco_late_soft_finish_phase_accum = new double[FeatureSchema.PHASE_BUCKETS];
+        final double[] monaco_two_stop_final_hard_phase_accum = new double[FeatureSchema.PHASE_BUCKETS];
     }
 
     private static final class ValidationMetrics {

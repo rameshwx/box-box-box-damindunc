@@ -11,11 +11,20 @@ import java.util.Objects;
 import java.util.Set;
 
 final class DriverFeatures {
+    private static final int MONACO_TRACK_INDEX = FeatureSchema.trackIndex("Monaco");
     final String driverId;
+    final int driverIndex;
     final int trackIndex;
     final int tempBucket;
     final int baseBucket;
     final double fixedPitPenalty;
+    final int stopCount;
+    final int startCompoundIndex;
+    final int finalCompoundIndex;
+    final int onlyStopPhase;
+    final int finalStopPhase;
+    final int lateSoftFinishPhase;
+    final int twoStopFinalHardPhase;
     final int[] activeAgeFlatIndices;
     final short[] activeAgeCounts;
     final int[] activeLapFlatIndices;
@@ -33,10 +42,18 @@ final class DriverFeatures {
 
     DriverFeatures(
             String driverId,
+            int driverIndex,
             int trackIndex,
             int tempBucket,
             int baseBucket,
             double fixedPitPenalty,
+            int stopCount,
+            int startCompoundIndex,
+            int finalCompoundIndex,
+            int onlyStopPhase,
+            int finalStopPhase,
+            int lateSoftFinishPhase,
+            int twoStopFinalHardPhase,
             int[] activeAgeFlatIndices,
             short[] activeAgeCounts,
             int[] activeLapFlatIndices,
@@ -52,10 +69,18 @@ final class DriverFeatures {
             int[] activeTransitionPhaseFlatIndices,
             short[] activeTransitionPhaseCounts) {
         this.driverId = driverId;
+        this.driverIndex = driverIndex;
         this.trackIndex = trackIndex;
         this.tempBucket = tempBucket;
         this.baseBucket = baseBucket;
         this.fixedPitPenalty = fixedPitPenalty;
+        this.stopCount = stopCount;
+        this.startCompoundIndex = startCompoundIndex;
+        this.finalCompoundIndex = finalCompoundIndex;
+        this.onlyStopPhase = onlyStopPhase;
+        this.finalStopPhase = finalStopPhase;
+        this.lateSoftFinishPhase = lateSoftFinishPhase;
+        this.twoStopFinalHardPhase = twoStopFinalHardPhase;
         this.activeAgeFlatIndices = activeAgeFlatIndices;
         this.activeAgeCounts = activeAgeCounts;
         this.activeLapFlatIndices = activeLapFlatIndices;
@@ -141,6 +166,31 @@ final class DriverFeatures {
             score += activeTransitionPhaseCounts[index]
                     * model.track_transition_phase[trackIndex][stopSlot][fromCompound][toCompound][phase];
         }
+        if (trackIndex == MONACO_TRACK_INDEX) {
+            score += model.monaco_stop_count_weight[stopCount];
+            score += fixedPitPenalty * model.monaco_pit_penalty_by_stop_count[stopCount];
+            if (onlyStopPhase != 0) {
+                score += model.monaco_only_stop_phase[onlyStopPhase];
+                score += model.monaco_only_stop_phase_by_final_compound[finalCompoundIndex][onlyStopPhase];
+                score += model.monaco_only_stop_start_final_phase[startCompoundIndex][finalCompoundIndex][onlyStopPhase];
+            }
+            score += model.monaco_final_compound[finalCompoundIndex];
+            score += model.monaco_start_final_compound[startCompoundIndex][finalCompoundIndex];
+            score += model.monaco_stop_count_by_final_compound[stopCount][finalCompoundIndex];
+            score += model.monaco_driver_bias[driverIndex];
+            score += model.monaco_driver_by_stop_count[driverIndex][stopCount];
+            score += model.monaco_driver_by_final_compound[driverIndex][finalCompoundIndex];
+            if (finalStopPhase != 0) {
+                score += model.monaco_final_stop_phase[finalStopPhase];
+                score += model.monaco_final_compound_by_final_stop_phase[finalCompoundIndex][finalStopPhase];
+            }
+            if (lateSoftFinishPhase != 0) {
+                score += model.monaco_late_soft_finish_phase[lateSoftFinishPhase];
+            }
+            if (twoStopFinalHardPhase != 0) {
+                score += model.monaco_two_stop_final_hard_phase[twoStopFinalHardPhase];
+            }
+        }
         return score;
     }
 
@@ -190,6 +240,10 @@ final class PreparedRace {
 }
 
 final class FeatureExtractor {
+    private static final int SOFT_COMPOUND_INDEX = FeatureSchema.compoundIndex("SOFT");
+    private static final int HARD_COMPOUND_INDEX = FeatureSchema.compoundIndex("HARD");
+    private static final int LATE_SOFT_FINISH_MIN_PERCENT = 50;
+
     private FeatureExtractor() {
     }
 
@@ -266,6 +320,7 @@ final class FeatureExtractor {
             throw new IllegalArgumentException("driver_id is required");
         }
         int currentCompound = FeatureSchema.compoundIndex(strategy.starting_tire);
+        int startingCompound = currentCompound;
         List<PitStop> pitStops = strategy.pit_stops == null ? List.of() : strategy.pit_stops;
         short[] ageCounts = new short[FeatureSchema.COMPOUNDS.length * FeatureSchema.AGE_BUCKETS];
         short[] lapCounts = new short[FeatureSchema.COMPOUNDS.length * FeatureSchema.LAP_BUCKETS];
@@ -468,12 +523,32 @@ final class FeatureExtractor {
             }
         }
 
+        int stopCount = pitStops.size();
+        int finalCompound = currentCompound;
+        int onlyStopPhase = stopCount == 1 ? FeatureSchema.phaseBucket(pitStops.get(0).lap, config.total_laps) : 0;
+        int finalStopPhase =
+                stopCount == 0 ? 0 : FeatureSchema.phaseBucket(pitStops.get(stopCount - 1).lap, config.total_laps);
+        int lateSoftFinishPhase = stopCount == 0
+                        || finalCompound != SOFT_COMPOUND_INDEX
+                        || pitStops.get(stopCount - 1).lap * 100 < config.total_laps * LATE_SOFT_FINISH_MIN_PERCENT
+                ? 0
+                : finalStopPhase;
+        int twoStopFinalHardPhase = stopCount == 2 && finalCompound == HARD_COMPOUND_INDEX ? finalStopPhase : 0;
+
         return new DriverFeatures(
                 strategy.driver_id,
+                FeatureSchema.driverIndex(strategy.driver_id),
                 trackIndex,
                 tempBucket,
                 baseBucket,
                 pitStops.size() * config.pit_lane_time,
+                stopCount,
+                startingCompound,
+                finalCompound,
+                onlyStopPhase,
+                finalStopPhase,
+                lateSoftFinishPhase,
+                twoStopFinalHardPhase,
                 activeAgeFlatIndices,
                 activeAgeCounts,
                 activeLapFlatIndices,

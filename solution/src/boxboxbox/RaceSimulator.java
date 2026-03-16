@@ -14,6 +14,7 @@ public final class RaceSimulator {
     private static final Path MULTI_STOP_V3_WEIGHTED_MODEL_PATH = Path.of("solution", "model_multi_stop_v3_weighted.json");
     private static final Path ONE_STOP_MID_MODEL_PATH = Path.of("solution", "model_one_stop_mid.json");
     private static final Path MONACO_ONE_STOP_MODEL_PATH = Path.of("solution", "model_monaco_one_stop.json");
+    private static final Path MONACO_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_monaco_multi_stop.json");
     private static final Path SUZUKA_ONE_STOP_MODEL_PATH = Path.of("solution", "model_suzuka_one_stop.json");
     private static final Path ONE_STOP_38_41_MODEL_PATH = Path.of("solution", "model_onestop_38_41.json");
     private static final Path ONE_STOP_40_41_MODEL_PATH = Path.of("solution", "model_onestop_40_41.json");
@@ -30,6 +31,8 @@ public final class RaceSimulator {
     private static final int HOT_RACE_MIN_TRACK_TEMP = 40;
     private static final int SUZUKA_HOT_ONE_STOP_LAPS = 48;
     private static final int SUZUKA_HOT_ONE_STOP_TRACK_TEMP = 31;
+    private static final double SUZUKA_MULTI_STOP_DEFAULT_WEIGHT = 0.7;
+    private static final double SUZUKA_MULTI_STOP_V3_WEIGHT = 0.3;
 
     private RaceSimulator() {
     }
@@ -56,10 +59,23 @@ public final class RaceSimulator {
                     new Model[] {Model.load(SHORT_RACE_MODEL_PATH), Model.load(SHORT_RACE_V3_MODEL_PATH)},
                     new double[] {0.5, 0.5});
         }
+        if (useSuzukaMultiStopBlend(input)) {
+            return Predictor.predict(
+                    input,
+                    new Model[] {Model.load(DEFAULT_MODEL_PATH), Model.load(MULTI_STOP_V3_WEIGHTED_MODEL_PATH)},
+                    new double[] {SUZUKA_MULTI_STOP_DEFAULT_WEIGHT, SUZUKA_MULTI_STOP_V3_WEIGHT});
+        }
         return Predictor.predict(input, Model.load(selectModelPath(input)));
     }
 
     private static Path selectModelPath(RaceInput input) {
+        if (input.race_config != null
+                && input.strategies != null
+                && "Monaco".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
+                && Files.exists(MONACO_MULTI_STOP_MODEL_PATH)) {
+            return MONACO_MULTI_STOP_MODEL_PATH;
+        }
         if (input.race_config != null
                 && input.race_config.track_temp >= HOT_RACE_MIN_TRACK_TEMP
                 && Files.exists(HOT_RACE_MODEL_PATH)) {
@@ -206,6 +222,15 @@ public final class RaceSimulator {
                 && totalStops(input) == ONE_STOP_TOTAL_STOPS
                 && Files.exists(SHORT_RACE_MODEL_PATH)
                 && Files.exists(SHORT_RACE_V3_MODEL_PATH);
+    }
+
+    private static boolean useSuzukaMultiStopBlend(RaceInput input) {
+        return input.race_config != null
+                && input.strategies != null
+                && "Suzuka".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
+                && Files.exists(DEFAULT_MODEL_PATH)
+                && Files.exists(MULTI_STOP_V3_WEIGHTED_MODEL_PATH);
     }
 
     private static int totalStops(RaceInput input) {
