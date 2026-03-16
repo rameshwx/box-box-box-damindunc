@@ -19,8 +19,11 @@ public final class RaceSimulator {
     private static final Path ONE_STOP_38_41_MODEL_PATH = Path.of("solution", "model_onestop_38_41.json");
     private static final Path ONE_STOP_40_41_MODEL_PATH = Path.of("solution", "model_onestop_40_41.json");
     private static final Path SPA_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_spa_multi_stop.json");
+    private static final Path SPA_HOT_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_spa_hot_multi_stop.json");
     private static final Path BAHRAIN_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_bahrain_multi_stop.json");
+    private static final Path BAHRAIN_HOT_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_bahrain_hot_multi_stop.json");
     private static final Path BAHRAIN_ALL_V3_MODEL_PATH = Path.of("solution", "model_bahrain_all_v3.json");
+    private static final Path MONZA_HOT_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_monza_hot_multi_stop.json");
     private static final Path HOT_RACE_MODEL_PATH = Path.of("solution", "model_hot_race.json");
     private static final int COOL_MULTI_STOP_MIN_TOTAL_STOPS = 24;
     private static final int SHORT_RACE_MAX_LAPS = 39;
@@ -77,9 +80,13 @@ public final class RaceSimulator {
             return MONACO_MULTI_STOP_MODEL_PATH;
         }
         if (input.race_config != null
+                && input.strategies != null
+                && "Spa".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
                 && input.race_config.track_temp >= HOT_RACE_MIN_TRACK_TEMP
-                && Files.exists(HOT_RACE_MODEL_PATH)) {
-            return HOT_RACE_MODEL_PATH;
+                && input.race_config.total_laps <= 46
+                && Files.exists(SPA_HOT_MULTI_STOP_MODEL_PATH)) {
+            return SPA_HOT_MULTI_STOP_MODEL_PATH;
         }
         if (input.race_config != null
                 && input.strategies != null
@@ -109,6 +116,14 @@ public final class RaceSimulator {
                 && input.strategies != null
                 && "Bahrain".equals(input.race_config.track)
                 && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
+                && input.race_config.track_temp >= HOT_RACE_MIN_TRACK_TEMP
+                && Files.exists(BAHRAIN_HOT_MULTI_STOP_MODEL_PATH)) {
+            return BAHRAIN_HOT_MULTI_STOP_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.strategies != null
+                && "Bahrain".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
                 && input.race_config.total_laps == 44
                 && input.race_config.track_temp == 36
                 && Files.exists(BAHRAIN_ALL_V3_MODEL_PATH)) {
@@ -120,6 +135,19 @@ public final class RaceSimulator {
                 && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
                 && Files.exists(BAHRAIN_MULTI_STOP_MODEL_PATH)) {
             return BAHRAIN_MULTI_STOP_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.strategies != null
+                && "Monza".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
+                && input.race_config.track_temp >= HOT_RACE_MIN_TRACK_TEMP
+                && Files.exists(MONZA_HOT_MULTI_STOP_MODEL_PATH)) {
+            return MONZA_HOT_MULTI_STOP_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.race_config.track_temp >= HOT_RACE_MIN_TRACK_TEMP
+                && Files.exists(HOT_RACE_MODEL_PATH)) {
+            return HOT_RACE_MODEL_PATH;
         }
         if (input.race_config != null
                 && input.strategies != null
