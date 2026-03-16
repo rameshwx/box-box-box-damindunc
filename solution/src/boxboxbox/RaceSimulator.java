@@ -15,6 +15,10 @@ public final class RaceSimulator {
     private static final Path ONE_STOP_MID_MODEL_PATH = Path.of("solution", "model_one_stop_mid.json");
     private static final Path MONACO_ONE_STOP_MODEL_PATH = Path.of("solution", "model_monaco_one_stop.json");
     private static final Path MONACO_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_monaco_multi_stop.json");
+    private static final Path MONZA_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_monza_multi_stop.json");
+    private static final Path COTA_MULTI_STOP_MODEL_PATH = Path.of("solution", "model_cota_multi_stop.json");
+    private static final Path SILVERSTONE_LONG_COOL_MULTI_STOP_MODEL_PATH =
+            Path.of("solution", "model_silverstone_long_cool_multi_stop.json");
     private static final Path SUZUKA_ONE_STOP_MODEL_PATH = Path.of("solution", "model_suzuka_one_stop.json");
     private static final Path ONE_STOP_38_41_MODEL_PATH = Path.of("solution", "model_onestop_38_41.json");
     private static final Path ONE_STOP_40_41_MODEL_PATH = Path.of("solution", "model_onestop_40_41.json");
@@ -138,11 +142,35 @@ public final class RaceSimulator {
         }
         if (input.race_config != null
                 && input.strategies != null
+                && "COTA".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
+                && Files.exists(COTA_MULTI_STOP_MODEL_PATH)) {
+            return COTA_MULTI_STOP_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.strategies != null
+                && "Silverstone".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
+                && input.race_config.total_laps >= 60
+                && input.race_config.track_temp <= 20
+                && Files.exists(SILVERSTONE_LONG_COOL_MULTI_STOP_MODEL_PATH)) {
+            return SILVERSTONE_LONG_COOL_MULTI_STOP_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.strategies != null
                 && "Monza".equals(input.race_config.track)
                 && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
                 && input.race_config.track_temp >= HOT_RACE_MIN_TRACK_TEMP
                 && Files.exists(MONZA_HOT_MULTI_STOP_MODEL_PATH)) {
             return MONZA_HOT_MULTI_STOP_MODEL_PATH;
+        }
+        if (input.race_config != null
+                && input.strategies != null
+                && "Monza".equals(input.race_config.track)
+                && totalStops(input) >= MULTI_STOP_MIN_TOTAL_STOPS
+                && input.race_config.track_temp < HOT_RACE_MIN_TRACK_TEMP
+                && Files.exists(MONZA_MULTI_STOP_MODEL_PATH)) {
+            return MONZA_MULTI_STOP_MODEL_PATH;
         }
         if (input.race_config != null
                 && input.race_config.track_temp >= HOT_RACE_MIN_TRACK_TEMP
