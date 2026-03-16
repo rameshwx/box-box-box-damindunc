@@ -35,6 +35,7 @@ public final class TrainModel {
         ValidationMetrics baseline = evaluate(model, files, config);
         Model bestModel = model.deepCopy();
         ValidationMetrics bestMetrics = baseline;
+        ValidationMetrics lastMetrics = baseline;
         int bestEpoch = 0;
 
         System.out.printf(
@@ -50,6 +51,7 @@ public final class TrainModel {
         for (int epoch = 1; epoch <= config.epochs; epoch++) {
             long pairCount = trainEpoch(model, state, files, config, epoch);
             ValidationMetrics metrics = evaluate(model, files, config);
+            lastMetrics = metrics;
             System.out.printf(
                     "Epoch %d/%d: pairs=%d exact=%d/%d (%.4f) pairwise=%d/%d (%.4f)%n",
                     epoch,
@@ -67,6 +69,12 @@ public final class TrainModel {
                 bestModel = model.deepCopy();
                 bestEpoch = epoch;
             }
+        }
+
+        if (config.saveLast) {
+            bestMetrics = lastMetrics;
+            bestModel = model.deepCopy();
+            bestEpoch = config.epochs;
         }
 
         bestModel.save(config.output);
@@ -911,6 +919,7 @@ public final class TrainModel {
         final PairWeighting pairWeighting;
         final Path initModel;
         final boolean monacoSummaryOnly;
+        final boolean saveLast;
         final double learningRateScale;
         final Integer minTotalStops;
         final Integer maxTotalStops;
@@ -930,6 +939,7 @@ public final class TrainModel {
                 PairWeighting pairWeighting,
                 Path initModel,
                 boolean monacoSummaryOnly,
+                boolean saveLast,
                 double learningRateScale,
                 Integer minTotalStops,
                 Integer maxTotalStops,
@@ -947,6 +957,7 @@ public final class TrainModel {
             this.pairWeighting = pairWeighting;
             this.initModel = initModel;
             this.monacoSummaryOnly = monacoSummaryOnly;
+            this.saveLast = saveLast;
             this.learningRateScale = learningRateScale;
             this.minTotalStops = minTotalStops;
             this.maxTotalStops = maxTotalStops;
@@ -1004,6 +1015,7 @@ public final class TrainModel {
             PairWeighting pairWeighting = PairWeighting.NONE;
             Path initModel = null;
             boolean monacoSummaryOnly = false;
+            boolean saveLast = false;
             double learningRateScale = 1.0;
             Integer minTotalStops = null;
             Integer maxTotalStops = null;
@@ -1032,6 +1044,7 @@ public final class TrainModel {
                     case "--pair-weighting" -> pairWeighting = PairWeighting.parse(value);
                     case "--init-model" -> initModel = Path.of(value);
                     case "--monaco-summary-only" -> monacoSummaryOnly = Boolean.parseBoolean(value);
+                    case "--save-last" -> saveLast = Boolean.parseBoolean(value);
                     case "--learning-rate-scale" -> learningRateScale = Double.parseDouble(value);
                     case "--min-total-stops" -> minTotalStops = Integer.parseInt(value);
                     case "--max-total-stops" -> maxTotalStops = Integer.parseInt(value);
@@ -1087,6 +1100,7 @@ public final class TrainModel {
                     pairWeighting,
                     initModel,
                     monacoSummaryOnly,
+                    saveLast,
                     learningRateScale,
                     minTotalStops,
                     maxTotalStops,
