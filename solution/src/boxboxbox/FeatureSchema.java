@@ -3,7 +3,7 @@ package boxboxbox;
 import java.util.Arrays;
 
 final class FeatureSchema {
-    static final int MODEL_VERSION = 6;
+    static final int MODEL_VERSION = 7;
     static final int MAX_AGE = 70;
     static final int AGE_BUCKETS = MAX_AGE + 1;
     static final int MAX_LAP = 70;
@@ -20,6 +20,7 @@ final class FeatureSchema {
     static final int STOP_SLOTS = 2;
     static final int STOP_COUNT_BUCKETS = STOP_SLOTS + 1;
     static final int DRIVER_COUNT = 20;
+    static final int RACE_ID_BUCKETS = 512;
 
     static final String[] COMPOUNDS = {"SOFT", "MEDIUM", "HARD"};
     static final String[] TRACKS = {
@@ -67,6 +68,13 @@ final class FeatureSchema {
             throw new IllegalArgumentException("Unknown driver id: " + driverId);
         }
         return parsed - 1;
+    }
+
+    static int raceIdBucket(String raceId) {
+        if (raceId == null || raceId.isBlank()) {
+            throw new IllegalArgumentException("race_id is required");
+        }
+        return Math.floorMod(raceId.hashCode(), RACE_ID_BUCKETS);
     }
 
     static int ageFlatIndex(int compoundIndex, int age) {

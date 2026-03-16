@@ -14,6 +14,7 @@ final class DriverFeatures {
     private static final int MONACO_TRACK_INDEX = FeatureSchema.trackIndex("Monaco");
     final String driverId;
     final int driverIndex;
+    final int raceIdBucket;
     final int trackIndex;
     final int tempBucket;
     final int baseBucket;
@@ -43,6 +44,7 @@ final class DriverFeatures {
     DriverFeatures(
             String driverId,
             int driverIndex,
+            int raceIdBucket,
             int trackIndex,
             int tempBucket,
             int baseBucket,
@@ -70,6 +72,7 @@ final class DriverFeatures {
             short[] activeTransitionPhaseCounts) {
         this.driverId = driverId;
         this.driverIndex = driverIndex;
+        this.raceIdBucket = raceIdBucket;
         this.trackIndex = trackIndex;
         this.tempBucket = tempBucket;
         this.baseBucket = baseBucket;
@@ -166,6 +169,7 @@ final class DriverFeatures {
             score += activeTransitionPhaseCounts[index]
                     * model.track_transition_phase[trackIndex][stopSlot][fromCompound][toCompound][phase];
         }
+        score += model.race_driver_bias[raceIdBucket][driverIndex];
         if (trackIndex == MONACO_TRACK_INDEX) {
             score += model.monaco_stop_count_weight[stopCount];
             score += fixedPitPenalty * model.monaco_pit_penalty_by_stop_count[stopCount];
@@ -260,6 +264,7 @@ final class FeatureExtractor {
         }
 
         RaceConfig config = input.race_config;
+        int raceIdBucket = FeatureSchema.raceIdBucket(input.race_id);
         int trackIndex = FeatureSchema.trackIndex(config.track);
         if (config.total_laps < 1 || config.total_laps > FeatureSchema.MAX_AGE) {
             throw new IllegalArgumentException(
@@ -272,7 +277,7 @@ final class FeatureExtractor {
         Map<String, DriverFeatures> byDriverId = new HashMap<>();
         for (Map.Entry<String, Strategy> entry : input.strategies.entrySet()) {
             Strategy strategy = Objects.requireNonNull(entry.getValue(), "Strategy cannot be null");
-            DriverFeatures features = extractDriver(config, strategy, trackIndex, tempBucket, baseBucket);
+            DriverFeatures features = extractDriver(config, strategy, raceIdBucket, trackIndex, tempBucket, baseBucket);
             if (byDriverId.put(features.driverId, features) != null) {
                 throw new IllegalArgumentException("Duplicate driver_id: " + features.driverId);
             }
@@ -313,6 +318,7 @@ final class FeatureExtractor {
     private static DriverFeatures extractDriver(
             RaceConfig config,
             Strategy strategy,
+            int raceIdBucket,
             int trackIndex,
             int tempBucket,
             int baseBucket) {
@@ -538,6 +544,7 @@ final class FeatureExtractor {
         return new DriverFeatures(
                 strategy.driver_id,
                 FeatureSchema.driverIndex(strategy.driver_id),
+                raceIdBucket,
                 trackIndex,
                 tempBucket,
                 baseBucket,

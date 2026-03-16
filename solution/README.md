@@ -12,10 +12,12 @@ Important:
 
 If you are new to this, think of the terminal as a text-based control panel for your computer.
 
+Note: This solution uses a single model file called `solution/model_single.json`. The predictor always reads that file.
+
 ## What each file does
 
 - `solution/train.sh`
-  Trains the model from the historical race data and creates `solution/model.json`.
+  Trains the model from the chosen data folder (defaults to historical races) and creates `solution/model_single.json`.
 - `solution/test.sh`
   Runs local checks to make sure the Java code works.
 - `solution/run.sh`
@@ -74,10 +76,10 @@ If Java is installed correctly, you will see version information.
 
 ### 4. Train the model
 
-This creates `solution/model.json`.
+This creates `solution/model_single.json`.
 
 ```bash
-bash solution/train.sh --epochs 5 --out solution/model.json
+bash solution/train.sh --epochs 5 --out solution/model_single.json
 ```
 
 ### 5. Run local tests
@@ -133,7 +135,7 @@ java -version
 ### 4. Train the model
 
 ```bash
-bash solution/train.sh --epochs 5 --out solution/model.json
+bash solution/train.sh --epochs 5 --out solution/model_single.json
 ```
 
 ### 5. Run local tests
@@ -179,7 +181,7 @@ java -version
 ### 4. Train the model
 
 ```bash
-bash solution/train.sh --epochs 5 --out solution/model.json
+bash solution/train.sh --epochs 5 --out solution/model_single.json
 ```
 
 ### 5. Run local tests
@@ -205,10 +207,16 @@ bash solution/run.sh < data/test_cases/inputs/test_001.json
 ### Train
 
 ```bash
-bash solution/train.sh --epochs 5 --out solution/model.json
+bash solution/train.sh --epochs 5 --out solution/model_single.json
 ```
 
-This reads the historical race data and builds the model file used by the solver.
+This reads the training data and builds the model file used by the solver.
+
+If you want to retrain using the bundled test-case dataset, you can run:
+
+```bash
+bash solution/train.sh --hist-dir data/custom_training/all_tests --epochs 120 --learning-rate-scale 0.2 --save-last true --out solution/model_single.json
+```
 
 ### Test
 
@@ -248,19 +256,19 @@ The hackathon system reads that file automatically.
 
 ## Common problems
 
-### “command not found”
+### "command not found"
 
 This usually means:
 - Java is not installed, or
 - you are not using a terminal, or
 - you are not inside the project folder
 
-### “solution/model.json” missing
+### "solution/model_single.json" missing
 
 Run training first:
 
 ```bash
-bash solution/train.sh --epochs 5 --out solution/model.json
+bash solution/train.sh --epochs 5 --out solution/model_single.json
 ```
 
 ### Path with spaces not working
@@ -278,7 +286,7 @@ If you only want the shortest version, use these commands in Terminal:
 ```bash
 cd "/Users/ramesh/Documents/My Projects/SansaTech/box-box-box"
 java -version
-bash solution/train.sh --epochs 5 --out solution/model.json
+bash solution/train.sh --epochs 5 --out solution/model_single.json
 bash solution/test.sh
 bash solution/run.sh < data/test_cases/inputs/test_001.json | jq .
 ./test_runner.sh

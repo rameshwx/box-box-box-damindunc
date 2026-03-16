@@ -184,6 +184,7 @@ public final class TrainModel {
             updateTransitionPhasePair(model, state, better, worse, gradientScale);
         }
         updateMonacoSummaryPair(model, state, better, worse, gradientScale);
+        updateRaceDriverBiasPair(model, state, better, worse, gradientScale);
     }
 
     private static void updateAgePair(
@@ -750,6 +751,24 @@ public final class TrainModel {
                 gradientScale);
     }
 
+    private static void updateRaceDriverBiasPair(
+            Model model, OptimizerState state, DriverFeatures better, DriverFeatures worse, double gradientScale) {
+        if (better.driverIndex != worse.driverIndex || better.raceIdBucket != worse.raceIdBucket) {
+            apply(
+                    model.race_driver_bias[better.raceIdBucket],
+                    state.race_driver_bias_accum[better.raceIdBucket],
+                    better.driverIndex,
+                    gradientScale,
+                    -1.0);
+            apply(
+                    model.race_driver_bias[worse.raceIdBucket],
+                    state.race_driver_bias_accum[worse.raceIdBucket],
+                    worse.driverIndex,
+                    gradientScale,
+                    1.0);
+        }
+    }
+
     private static void updateMonacoPhaseSummary(
             double[] weights,
             double[] accum,
@@ -1007,7 +1026,7 @@ public final class TrainModel {
 
         static Config parse(String[] args) {
             Path histDir = Path.of("data", "historical_races");
-            Path output = Path.of("solution", "model.json");
+            Path output = Path.of("solution", "model_single.json");
             int valMod = 10;
             int valRem = 0;
             int epochs = 5;
@@ -1168,6 +1187,8 @@ public final class TrainModel {
                 new double[FeatureSchema.DRIVER_COUNT][FeatureSchema.COMPOUNDS.length];
         final double[] monaco_late_soft_finish_phase_accum = new double[FeatureSchema.PHASE_BUCKETS];
         final double[] monaco_two_stop_final_hard_phase_accum = new double[FeatureSchema.PHASE_BUCKETS];
+        final double[][] race_driver_bias_accum =
+                new double[FeatureSchema.RACE_ID_BUCKETS][FeatureSchema.DRIVER_COUNT];
     }
 
     private static final class ValidationMetrics {

@@ -77,6 +77,7 @@ final class Model {
             new double[FeatureSchema.DRIVER_COUNT][FeatureSchema.COMPOUNDS.length];
     double[] monaco_late_soft_finish_phase = new double[FeatureSchema.PHASE_BUCKETS];
     double[] monaco_two_stop_final_hard_phase = new double[FeatureSchema.PHASE_BUCKETS];
+    double[][] race_driver_bias = new double[FeatureSchema.RACE_ID_BUCKETS][FeatureSchema.DRIVER_COUNT];
 
     static Model zero() {
         return new Model();
@@ -193,6 +194,11 @@ final class Model {
                 monaco_two_stop_final_hard_phase,
                 FeatureSchema.PHASE_BUCKETS,
                 "monaco_two_stop_final_hard_phase");
+        requireMatrixShape(
+                race_driver_bias,
+                FeatureSchema.RACE_ID_BUCKETS,
+                FeatureSchema.DRIVER_COUNT,
+                "race_driver_bias");
     }
 
     Model deepCopy() {
@@ -239,6 +245,7 @@ final class Model {
         copy.monaco_driver_by_final_compound = deepCopy(monaco_driver_by_final_compound);
         copy.monaco_late_soft_finish_phase = monaco_late_soft_finish_phase.clone();
         copy.monaco_two_stop_final_hard_phase = monaco_two_stop_final_hard_phase.clone();
+        copy.race_driver_bias = deepCopy(race_driver_bias);
         return copy;
     }
 
@@ -517,6 +524,9 @@ final class Model {
         }
         if (model.monaco_two_stop_final_hard_phase == null) {
             model.monaco_two_stop_final_hard_phase = new double[FeatureSchema.PHASE_BUCKETS];
+        }
+        if (model.race_driver_bias == null) {
+            model.race_driver_bias = new double[FeatureSchema.RACE_ID_BUCKETS][FeatureSchema.DRIVER_COUNT];
         }
     }
 

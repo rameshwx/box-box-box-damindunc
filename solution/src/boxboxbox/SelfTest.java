@@ -138,9 +138,10 @@ public final class SelfTest {
     }
 
     private static void maybeRunIntegrationChecks() throws Exception {
-        Path modelPath = Path.of("solution", "model.json");
+        Path modelPath = Path.of("solution", "model_single.json");
         if (!Files.exists(modelPath)) {
-            System.out.println("SelfTest: skipping integration checks because solution/model.json does not exist yet");
+            System.out.println(
+                    "SelfTest: skipping integration checks because solution/model_single.json does not exist yet");
             return;
         }
         Model model;
@@ -148,7 +149,7 @@ public final class SelfTest {
             model = Model.load(modelPath);
         } catch (IllegalArgumentException exception) {
             System.out.println(
-                    "SelfTest: skipping integration checks because solution/model.json is incompatible with this code");
+                    "SelfTest: skipping integration checks because solution/model_single.json is incompatible with this code");
             return;
         }
         com.google.gson.Gson gson = new com.google.gson.Gson();
