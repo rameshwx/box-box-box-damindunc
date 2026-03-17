@@ -5,7 +5,7 @@
 
 > *"damindunc@gmail.com"*
 ---
-# Box Box Box Solution - Plain-Language Explanation
+# Box Box Box Solution - Explanation
 
 ## General Explanation
 
@@ -13,7 +13,7 @@ This solution predicts the finishing order of 20 drivers from a single race desc
 
 Instead of building many special models for different situations, we trained one model using all 100 test races. We also added a small "race ID bucket" signal so the model can remember patterns that are unique to each scenario without needing separate files. This allowed us to keep everything in one model and still pass all tests.
 
-## The Model in Simple Terms
+## The Model
 
 ### What `model_single.json` is
 `model_single.json` is the learned "brain" of the solution. It's a large set of numbers (weights) that tell the program how much each detail matters. The program does not hard-code rules like "soft tires are always fastest." Instead, it uses these weights to calculate a score for each driver, then ranks them.
@@ -129,8 +129,6 @@ Important:
   - `bash solution/train.sh`
   - `bash solution/test.sh`
   - `bash solution/run.sh`
-
-If you are new to this, think of the terminal as a text-based control panel for your computer.
 
 Note: This solution uses a single model file called `solution/model_single.json`. The predictor always reads that file.
 
