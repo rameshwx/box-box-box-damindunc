@@ -1,6 +1,3 @@
-Here’s the updated `README.md` content in plain Markdown that you can copy into your repository. Replace your existing `solution/README.md` with this file to reflect the latest code changes, including the loosened input constraints, the optional race‑order memorization feature, and other improvements:
-
-```markdown
 # Box Box Box 🏁
 ## F1 Pit Strategy Optimization Challenge
 
