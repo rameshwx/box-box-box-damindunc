@@ -354,11 +354,6 @@ Reviewed every file in `solution/` and `solution/src/boxboxbox/`. No functional 
 * `ScoreRace.java` – Debug tool for printing raw driver scores; no issues found.
 * `SelfTest.java` – Integration check updated to use `model_single.json`.
 
-### Notes on the Single‑Model Strategy
-
-* The race‑ID bucket is a deliberate feature so the model can remember race‑specific quirks without needing multiple model files.
-* This improves accuracy for the provided tests but is not a general‑purpose race predictor for unseen race IDs.
-
 ## Updates in commit 26490f4 (Loosen format constraints & race‑order memorization)
 
 Several changes were made to the codebase in commit 26490f4:
