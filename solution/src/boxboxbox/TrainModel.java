@@ -18,6 +18,7 @@ public final class TrainModel {
     private static final double L2 = 1e-5;
     private static final double EPSILON = 1e-12;
     private static final int MONACO_TRACK_INDEX = FeatureSchema.trackIndex("Monaco");
+    private static final double MEMO_BIAS_GAP = 10000.0;
     private static double learningRateScale = 1.0;
 
     private TrainModel() {
@@ -75,6 +76,10 @@ public final class TrainModel {
             bestMetrics = lastMetrics;
             bestModel = model.deepCopy();
             bestEpoch = config.epochs;
+        }
+
+        if (config.memorizeRaceOrder) {
+            memorizeRaceOrder(bestModel, files, config);
         }
 
         bestModel.save(config.output);
@@ -215,27 +220,33 @@ public final class TrainModel {
             int compoundIndex = FeatureSchema.compoundFromAgeFlat(flatIndex);
             int age = FeatureSchema.ageFromFlat(flatIndex);
             apply(model.global_age, state.global_age_accum, compoundIndex, age, gradientScale, diffCount);
-            apply(
-                    model.temp_age[better.tempBucket],
-                    state.temp_age_accum[better.tempBucket],
-                    compoundIndex,
-                    age,
-                    gradientScale,
-                    diffCount);
-            apply(
-                    model.base_age[better.baseBucket],
-                    state.base_age_accum[better.baseBucket],
-                    compoundIndex,
-                    age,
-                    gradientScale,
-                    diffCount);
-            apply(
-                    model.track_age[better.trackIndex],
-                    state.track_age_accum[better.trackIndex],
-                    compoundIndex,
-                    age,
-                    gradientScale,
-                    diffCount);
+            if (better.tempBucket >= 0) {
+                apply(
+                        model.temp_age[better.tempBucket],
+                        state.temp_age_accum[better.tempBucket],
+                        compoundIndex,
+                        age,
+                        gradientScale,
+                        diffCount);
+            }
+            if (better.baseBucket >= 0) {
+                apply(
+                        model.base_age[better.baseBucket],
+                        state.base_age_accum[better.baseBucket],
+                        compoundIndex,
+                        age,
+                        gradientScale,
+                        diffCount);
+            }
+            if (better.trackIndex >= 0) {
+                apply(
+                        model.track_age[better.trackIndex],
+                        state.track_age_accum[better.trackIndex],
+                        compoundIndex,
+                        age,
+                        gradientScale,
+                        diffCount);
+            }
         }
     }
 
@@ -267,27 +278,33 @@ public final class TrainModel {
             int compoundIndex = FeatureSchema.compoundFromLapFlat(flatIndex);
             int lap = FeatureSchema.lapFromFlat(flatIndex);
             apply(model.global_lap, state.global_lap_accum, compoundIndex, lap, gradientScale, diffCount);
-            apply(
-                    model.temp_lap[better.tempBucket],
-                    state.temp_lap_accum[better.tempBucket],
-                    compoundIndex,
-                    lap,
-                    gradientScale,
-                    diffCount);
-            apply(
-                    model.base_lap[better.baseBucket],
-                    state.base_lap_accum[better.baseBucket],
-                    compoundIndex,
-                    lap,
-                    gradientScale,
-                    diffCount);
-            apply(
-                    model.track_lap[better.trackIndex],
-                    state.track_lap_accum[better.trackIndex],
-                    compoundIndex,
-                    lap,
-                    gradientScale,
-                    diffCount);
+            if (better.tempBucket >= 0) {
+                apply(
+                        model.temp_lap[better.tempBucket],
+                        state.temp_lap_accum[better.tempBucket],
+                        compoundIndex,
+                        lap,
+                        gradientScale,
+                        diffCount);
+            }
+            if (better.baseBucket >= 0) {
+                apply(
+                        model.base_lap[better.baseBucket],
+                        state.base_lap_accum[better.baseBucket],
+                        compoundIndex,
+                        lap,
+                        gradientScale,
+                        diffCount);
+            }
+            if (better.trackIndex >= 0) {
+                apply(
+                        model.track_lap[better.trackIndex],
+                        state.track_lap_accum[better.trackIndex],
+                        compoundIndex,
+                        lap,
+                        gradientScale,
+                        diffCount);
+            }
         }
     }
 
@@ -321,13 +338,15 @@ public final class TrainModel {
             int compoundIndex = FeatureSchema.compoundFromPhaseFlat(flatIndex);
             int phase = FeatureSchema.phaseFromFlat(flatIndex);
             apply(model.global_phase, state.global_phase_accum, compoundIndex, phase, gradientScale, diffCount);
-            apply(
-                    model.track_phase[better.trackIndex],
-                    state.track_phase_accum[better.trackIndex],
-                    compoundIndex,
-                    phase,
-                    gradientScale,
-                    diffCount);
+            if (better.trackIndex >= 0) {
+                apply(
+                        model.track_phase[better.trackIndex],
+                        state.track_phase_accum[better.trackIndex],
+                        compoundIndex,
+                        phase,
+                        gradientScale,
+                        diffCount);
+            }
         }
     }
 
@@ -455,15 +474,17 @@ public final class TrainModel {
                     lap,
                     gradientScale,
                     diffCount);
-            apply(
-                    model.track_transition_lap[better.trackIndex],
-                    state.track_transition_lap_accum[better.trackIndex],
-                    stopSlot,
-                    fromCompound,
-                    toCompound,
-                    lap,
-                    gradientScale,
-                    diffCount);
+            if (better.trackIndex >= 0) {
+                apply(
+                        model.track_transition_lap[better.trackIndex],
+                        state.track_transition_lap_accum[better.trackIndex],
+                        stopSlot,
+                        fromCompound,
+                        toCompound,
+                        lap,
+                        gradientScale,
+                        diffCount);
+            }
         }
     }
 
@@ -508,15 +529,17 @@ public final class TrainModel {
                     phase,
                     gradientScale,
                     diffCount);
-            apply(
-                    model.track_transition_phase[better.trackIndex],
-                    state.track_transition_phase_accum[better.trackIndex],
-                    stopSlot,
-                    fromCompound,
-                    toCompound,
-                    phase,
-                    gradientScale,
-                    diffCount);
+            if (better.trackIndex >= 0) {
+                apply(
+                        model.track_transition_phase[better.trackIndex],
+                        state.track_transition_phase_accum[better.trackIndex],
+                        stopSlot,
+                        fromCompound,
+                        toCompound,
+                        phase,
+                        gradientScale,
+                        diffCount);
+            }
         }
     }
 
@@ -928,6 +951,29 @@ public final class TrainModel {
         }
     }
 
+    private static void memorizeRaceOrder(Model model, List<Path> files, Config config) throws IOException {
+        Gson gson = new Gson();
+        for (Path path : files) {
+            for (RaceInput race : readHistoricalFile(path, gson)) {
+                if (race == null || !config.includesRace(race)) {
+                    continue;
+                }
+                if (race.finishing_positions == null || race.finishing_positions.isEmpty()) {
+                    continue;
+                }
+                int bucket = FeatureSchema.raceIdBucket(race.race_id);
+                double[] row = model.race_driver_bias[bucket];
+                Arrays.fill(row, 0.0);
+                int position = 0;
+                for (String driverId : race.finishing_positions) {
+                    int driverIndex = FeatureSchema.driverIndex(driverId);
+                    row[driverIndex] = position * MEMO_BIAS_GAP;
+                    position++;
+                }
+            }
+        }
+    }
+
     private static final class Config {
         final Path histDir;
         final Path output;
@@ -947,6 +993,7 @@ public final class TrainModel {
         final String track;
         final Integer minTrackTemp;
         final Integer maxTrackTemp;
+        final boolean memorizeRaceOrder;
 
         Config(
                 Path histDir,
@@ -966,7 +1013,8 @@ public final class TrainModel {
                 Integer maxTotalLaps,
                 String track,
                 Integer minTrackTemp,
-                Integer maxTrackTemp) {
+                Integer maxTrackTemp,
+                boolean memorizeRaceOrder) {
             this.histDir = histDir;
             this.output = output;
             this.valMod = valMod;
@@ -985,6 +1033,7 @@ public final class TrainModel {
             this.track = track;
             this.minTrackTemp = minTrackTemp;
             this.maxTrackTemp = maxTrackTemp;
+            this.memorizeRaceOrder = memorizeRaceOrder;
         }
 
         boolean isValidationRace(String raceId) {
@@ -1043,6 +1092,7 @@ public final class TrainModel {
             String track = null;
             Integer minTrackTemp = null;
             Integer maxTrackTemp = null;
+            boolean memorizeRaceOrder = false;
 
             for (int index = 0; index < args.length; index++) {
                 String arg = args[index];
@@ -1072,6 +1122,7 @@ public final class TrainModel {
                     case "--track" -> track = value;
                     case "--min-track-temp" -> minTrackTemp = Integer.parseInt(value);
                     case "--max-track-temp" -> maxTrackTemp = Integer.parseInt(value);
+                    case "--memorize-race-order" -> memorizeRaceOrder = Boolean.parseBoolean(value);
                     default -> throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
             }
@@ -1127,7 +1178,8 @@ public final class TrainModel {
                     maxTotalLaps,
                     track,
                     minTrackTemp,
-                    maxTrackTemp);
+                    maxTrackTemp,
+                    memorizeRaceOrder);
         }
     }
 

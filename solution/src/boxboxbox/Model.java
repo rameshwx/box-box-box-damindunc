@@ -461,6 +461,12 @@ final class Model {
     }
 
     private static void ensureOptionalFields(Model model) {
+        ensureTrackFields(model);
+        ensureMonacoFields(model);
+        ensureRaceDriverFields(model);
+    }
+
+    private static void ensureTrackFields(Model model) {
         if (model.track_phase == null) {
             model.track_phase =
                     new double[FeatureSchema.TRACKS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
@@ -473,6 +479,9 @@ final class Model {
             model.track_transition_phase = new double[FeatureSchema.TRACKS.length][FeatureSchema.STOP_SLOTS]
                     [FeatureSchema.COMPOUNDS.length][FeatureSchema.COMPOUNDS.length][FeatureSchema.PHASE_BUCKETS];
         }
+    }
+
+    private static void ensureMonacoFields(Model model) {
         if (model.monaco_stop_count_weight == null) {
             model.monaco_stop_count_weight = new double[FeatureSchema.STOP_COUNT_BUCKETS];
         }
@@ -525,6 +534,9 @@ final class Model {
         if (model.monaco_two_stop_final_hard_phase == null) {
             model.monaco_two_stop_final_hard_phase = new double[FeatureSchema.PHASE_BUCKETS];
         }
+    }
+
+    private static void ensureRaceDriverFields(Model model) {
         if (model.race_driver_bias == null) {
             model.race_driver_bias = new double[FeatureSchema.RACE_ID_BUCKETS][FeatureSchema.DRIVER_COUNT];
         }

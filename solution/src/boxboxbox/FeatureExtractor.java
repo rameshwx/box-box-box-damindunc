@@ -109,9 +109,15 @@ final class DriverFeatures {
             double count = activeAgeCounts[index];
 
             score += count * model.global_age[compoundIndex][age];
-            score += count * model.temp_age[tempBucket][compoundIndex][age];
-            score += count * model.base_age[baseBucket][compoundIndex][age];
-            score += count * model.track_age[trackIndex][compoundIndex][age];
+            if (tempBucket >= 0) {
+                score += count * model.temp_age[tempBucket][compoundIndex][age];
+            }
+            if (baseBucket >= 0) {
+                score += count * model.base_age[baseBucket][compoundIndex][age];
+            }
+            if (trackIndex >= 0) {
+                score += count * model.track_age[trackIndex][compoundIndex][age];
+            }
         }
         for (int index = 0; index < activeLapFlatIndices.length; index++) {
             int flatIndex = activeLapFlatIndices[index];
@@ -120,9 +126,15 @@ final class DriverFeatures {
             double count = activeLapCounts[index];
 
             score += count * model.global_lap[compoundIndex][lap];
-            score += count * model.temp_lap[tempBucket][compoundIndex][lap];
-            score += count * model.base_lap[baseBucket][compoundIndex][lap];
-            score += count * model.track_lap[trackIndex][compoundIndex][lap];
+            if (tempBucket >= 0) {
+                score += count * model.temp_lap[tempBucket][compoundIndex][lap];
+            }
+            if (baseBucket >= 0) {
+                score += count * model.base_lap[baseBucket][compoundIndex][lap];
+            }
+            if (trackIndex >= 0) {
+                score += count * model.track_lap[trackIndex][compoundIndex][lap];
+            }
         }
         for (int index = 0; index < activePhaseFlatIndices.length; index++) {
             int flatIndex = activePhaseFlatIndices[index];
@@ -130,7 +142,9 @@ final class DriverFeatures {
             int phase = FeatureSchema.phaseFromFlat(flatIndex);
             double count = activePhaseCounts[index];
             score += count * model.global_phase[compoundIndex][phase];
-            score += count * model.track_phase[trackIndex][compoundIndex][phase];
+            if (trackIndex >= 0) {
+                score += count * model.track_phase[trackIndex][compoundIndex][phase];
+            }
         }
         for (int index = 0; index < activeAgeLapFlatIndices.length; index++) {
             int flatIndex = activeAgeLapFlatIndices[index];
@@ -155,8 +169,10 @@ final class DriverFeatures {
             int toCompound = FeatureSchema.toCompoundFromTransitionFlat(flatIndex);
             int lap = FeatureSchema.lapFromTransitionFlat(flatIndex);
             score += activeTransitionCounts[index] * model.transition_weight[stopSlot][fromCompound][toCompound][lap];
-            score += activeTransitionCounts[index]
-                    * model.track_transition_lap[trackIndex][stopSlot][fromCompound][toCompound][lap];
+            if (trackIndex >= 0) {
+                score += activeTransitionCounts[index]
+                        * model.track_transition_lap[trackIndex][stopSlot][fromCompound][toCompound][lap];
+            }
         }
         for (int index = 0; index < activeTransitionPhaseFlatIndices.length; index++) {
             int flatIndex = activeTransitionPhaseFlatIndices[index];
@@ -166,8 +182,10 @@ final class DriverFeatures {
             int phase = FeatureSchema.phaseFromTransitionPhaseFlat(flatIndex);
             score += activeTransitionPhaseCounts[index]
                     * model.transition_phase_weight[stopSlot][fromCompound][toCompound][phase];
-            score += activeTransitionPhaseCounts[index]
-                    * model.track_transition_phase[trackIndex][stopSlot][fromCompound][toCompound][phase];
+            if (trackIndex >= 0) {
+                score += activeTransitionPhaseCounts[index]
+                        * model.track_transition_phase[trackIndex][stopSlot][fromCompound][toCompound][phase];
+            }
         }
         score += model.race_driver_bias[raceIdBucket][driverIndex];
         if (trackIndex == MONACO_TRACK_INDEX) {
@@ -266,9 +284,8 @@ final class FeatureExtractor {
         RaceConfig config = input.race_config;
         int raceIdBucket = FeatureSchema.raceIdBucket(input.race_id);
         int trackIndex = FeatureSchema.trackIndex(config.track);
-        if (config.total_laps < 1 || config.total_laps > FeatureSchema.MAX_AGE) {
-            throw new IllegalArgumentException(
-                    "total_laps must be between 1 and " + FeatureSchema.MAX_AGE + ": " + config.total_laps);
+        if (config.total_laps < 1) {
+            throw new IllegalArgumentException("total_laps must be positive: " + config.total_laps);
         }
 
         int tempBucket = FeatureSchema.tempBucket(config.track_temp);
@@ -341,9 +358,6 @@ final class FeatureExtractor {
 
         int currentLap = 1;
         int previousLap = 0;
-        Set<String> usedCompounds = new HashSet<>();
-        usedCompounds.add(strategy.starting_tire);
-
         for (int stopSlot = 0; stopSlot < pitStops.size(); stopSlot++) {
             PitStop stop = pitStops.get(stopSlot);
             if (stop == null) {
@@ -352,15 +366,12 @@ final class FeatureExtractor {
             if (stop.lap <= previousLap) {
                 throw new IllegalArgumentException("pit_stops must be strictly increasing for " + strategy.driver_id);
             }
-            if (stop.lap < currentLap || stop.lap >= config.total_laps) {
+            if (stop.lap < currentLap || stop.lap > config.total_laps) {
                 throw new IllegalArgumentException("Invalid pit stop lap " + stop.lap + " for " + strategy.driver_id);
             }
             if (FeatureSchema.compoundIndex(stop.from_tire) != currentCompound) {
                 throw new IllegalArgumentException(
                         "Pit stop from_tire does not match current tire for " + strategy.driver_id);
-            }
-            if (stopSlot >= FeatureSchema.STOP_SLOTS) {
-                throw new IllegalArgumentException("Too many pit stops for driver " + strategy.driver_id);
             }
 
             int stintLength = stop.lap - currentLap + 1;
@@ -374,38 +385,37 @@ final class FeatureExtractor {
                     currentLap,
                     stintLength,
                     config.total_laps);
-            int transitionFlatIndex =
-                    FeatureSchema.transitionFlatIndex(stopSlot, currentCompound, FeatureSchema.compoundIndex(stop.to_tire), stop.lap);
-            transitionCounts[transitionFlatIndex]++;
-            int transitionPhaseFlatIndex = FeatureSchema.transitionPhaseFlatIndex(
-                    stopSlot,
-                    currentCompound,
-                    FeatureSchema.compoundIndex(stop.to_tire),
-                    FeatureSchema.phaseBucket(stop.lap, config.total_laps));
-            transitionPhaseCounts[transitionPhaseFlatIndex]++;
+            if (stopSlot < FeatureSchema.STOP_SLOTS) {
+                int transitionFlatIndex = FeatureSchema.transitionFlatIndex(
+                        stopSlot,
+                        currentCompound,
+                        FeatureSchema.compoundIndex(stop.to_tire),
+                        stop.lap);
+                transitionCounts[transitionFlatIndex]++;
+                int transitionPhaseFlatIndex = FeatureSchema.transitionPhaseFlatIndex(
+                        stopSlot,
+                        currentCompound,
+                        FeatureSchema.compoundIndex(stop.to_tire),
+                        FeatureSchema.phaseBucket(stop.lap, config.total_laps));
+                transitionPhaseCounts[transitionPhaseFlatIndex]++;
+            }
             currentCompound = FeatureSchema.compoundIndex(stop.to_tire);
-            usedCompounds.add(stop.to_tire);
             currentLap = stop.lap + 1;
             previousLap = stop.lap;
         }
 
         int finalStintLength = config.total_laps - currentLap + 1;
-        if (finalStintLength <= 0) {
-            throw new IllegalArgumentException("Strategy ends after the race for driver " + strategy.driver_id);
-        }
-        addStint(
-                ageCounts,
-                lapCounts,
-                phaseCounts,
-                ageLapCounts,
-                agePhaseCounts,
-                currentCompound,
-                currentLap,
-                finalStintLength,
-                config.total_laps);
-
-        if (usedCompounds.size() < 2) {
-            throw new IllegalArgumentException("Driver must use at least 2 compounds: " + strategy.driver_id);
+        if (finalStintLength > 0) {
+            addStint(
+                    ageCounts,
+                    lapCounts,
+                    phaseCounts,
+                    ageLapCounts,
+                    agePhaseCounts,
+                    currentCompound,
+                    currentLap,
+                    finalStintLength,
+                    config.total_laps);
         }
 
         int activeAgeCount = 0;
@@ -530,6 +540,7 @@ final class FeatureExtractor {
         }
 
         int stopCount = pitStops.size();
+        int stopCountBucket = Math.min(stopCount, FeatureSchema.STOP_COUNT_BUCKETS - 1);
         int finalCompound = currentCompound;
         int onlyStopPhase = stopCount == 1 ? FeatureSchema.phaseBucket(pitStops.get(0).lap, config.total_laps) : 0;
         int finalStopPhase =
@@ -549,7 +560,7 @@ final class FeatureExtractor {
                 tempBucket,
                 baseBucket,
                 pitStops.size() * config.pit_lane_time,
-                stopCount,
+                stopCountBucket,
                 startingCompound,
                 finalCompound,
                 onlyStopPhase,

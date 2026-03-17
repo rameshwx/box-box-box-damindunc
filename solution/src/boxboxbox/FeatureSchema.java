@@ -56,7 +56,7 @@ final class FeatureSchema {
                 return index;
             }
         }
-        throw new IllegalArgumentException("Unknown track: " + track);
+        return -1;
     }
 
     static int driverIndex(String driverId) {
@@ -81,56 +81,42 @@ final class FeatureSchema {
         if (compoundIndex < 0 || compoundIndex >= COMPOUNDS.length) {
             throw new IllegalArgumentException("Invalid compound index: " + compoundIndex);
         }
-        if (age < 1 || age > MAX_AGE) {
-            throw new IllegalArgumentException("Invalid tire age: " + age);
-        }
-        return compoundIndex * AGE_BUCKETS + age;
+        int boundedAge = clamp(age, 1, MAX_AGE);
+        return compoundIndex * AGE_BUCKETS + boundedAge;
     }
 
     static int lapFlatIndex(int compoundIndex, int lap) {
         if (compoundIndex < 0 || compoundIndex >= COMPOUNDS.length) {
             throw new IllegalArgumentException("Invalid compound index: " + compoundIndex);
         }
-        if (lap < 1 || lap > MAX_LAP) {
-            throw new IllegalArgumentException("Invalid lap: " + lap);
-        }
-        return compoundIndex * LAP_BUCKETS + lap;
+        int boundedLap = clamp(lap, 1, MAX_LAP);
+        return compoundIndex * LAP_BUCKETS + boundedLap;
     }
 
     static int ageLapFlatIndex(int compoundIndex, int age, int lap) {
         if (compoundIndex < 0 || compoundIndex >= COMPOUNDS.length) {
             throw new IllegalArgumentException("Invalid compound index: " + compoundIndex);
         }
-        if (age < 1 || age > MAX_AGE) {
-            throw new IllegalArgumentException("Invalid tire age: " + age);
-        }
-        if (lap < 1 || lap > MAX_LAP) {
-            throw new IllegalArgumentException("Invalid lap: " + lap);
-        }
-        return compoundIndex * AGE_BUCKETS * LAP_BUCKETS + age * LAP_BUCKETS + lap;
+        int boundedAge = clamp(age, 1, MAX_AGE);
+        int boundedLap = clamp(lap, 1, MAX_LAP);
+        return compoundIndex * AGE_BUCKETS * LAP_BUCKETS + boundedAge * LAP_BUCKETS + boundedLap;
     }
 
     static int phaseFlatIndex(int compoundIndex, int phase) {
         if (compoundIndex < 0 || compoundIndex >= COMPOUNDS.length) {
             throw new IllegalArgumentException("Invalid compound index: " + compoundIndex);
         }
-        if (phase < 1 || phase > MAX_PHASE) {
-            throw new IllegalArgumentException("Invalid phase: " + phase);
-        }
-        return compoundIndex * PHASE_BUCKETS + phase;
+        int boundedPhase = clamp(phase, 1, MAX_PHASE);
+        return compoundIndex * PHASE_BUCKETS + boundedPhase;
     }
 
     static int agePhaseFlatIndex(int compoundIndex, int age, int phase) {
         if (compoundIndex < 0 || compoundIndex >= COMPOUNDS.length) {
             throw new IllegalArgumentException("Invalid compound index: " + compoundIndex);
         }
-        if (age < 1 || age > MAX_AGE) {
-            throw new IllegalArgumentException("Invalid tire age: " + age);
-        }
-        if (phase < 1 || phase > MAX_PHASE) {
-            throw new IllegalArgumentException("Invalid phase: " + phase);
-        }
-        return compoundIndex * AGE_BUCKETS * PHASE_BUCKETS + age * PHASE_BUCKETS + phase;
+        int boundedAge = clamp(age, 1, MAX_AGE);
+        int boundedPhase = clamp(phase, 1, MAX_PHASE);
+        return compoundIndex * AGE_BUCKETS * PHASE_BUCKETS + boundedAge * PHASE_BUCKETS + boundedPhase;
     }
 
     static int transitionFlatIndex(int stopSlot, int fromCompoundIndex, int toCompoundIndex, int lap) {
@@ -143,13 +129,11 @@ final class FeatureSchema {
         if (toCompoundIndex < 0 || toCompoundIndex >= COMPOUNDS.length) {
             throw new IllegalArgumentException("Invalid to compound index: " + toCompoundIndex);
         }
-        if (lap < 1 || lap > MAX_LAP) {
-            throw new IllegalArgumentException("Invalid transition lap: " + lap);
-        }
+        int boundedLap = clamp(lap, 1, MAX_LAP);
         return stopSlot * COMPOUNDS.length * COMPOUNDS.length * LAP_BUCKETS
                 + fromCompoundIndex * COMPOUNDS.length * LAP_BUCKETS
                 + toCompoundIndex * LAP_BUCKETS
-                + lap;
+                + boundedLap;
     }
 
     static int transitionPhaseFlatIndex(int stopSlot, int fromCompoundIndex, int toCompoundIndex, int phase) {
@@ -162,13 +146,11 @@ final class FeatureSchema {
         if (toCompoundIndex < 0 || toCompoundIndex >= COMPOUNDS.length) {
             throw new IllegalArgumentException("Invalid to compound index: " + toCompoundIndex);
         }
-        if (phase < 1 || phase > MAX_PHASE) {
-            throw new IllegalArgumentException("Invalid transition phase: " + phase);
-        }
+        int boundedPhase = clamp(phase, 1, MAX_PHASE);
         return stopSlot * COMPOUNDS.length * COMPOUNDS.length * PHASE_BUCKETS
                 + fromCompoundIndex * COMPOUNDS.length * PHASE_BUCKETS
                 + toCompoundIndex * PHASE_BUCKETS
-                + phase;
+                + boundedPhase;
     }
 
     static int compoundFromAgeFlat(int flatIndex) {
@@ -253,7 +235,7 @@ final class FeatureSchema {
 
     static int tempBucket(int trackTemp) {
         if (trackTemp < TEMP_MIN || trackTemp > TEMP_MAX) {
-            throw new IllegalArgumentException("track_temp out of range: " + trackTemp);
+            return -1;
         }
         return trackTemp - TEMP_MIN;
     }
@@ -261,30 +243,32 @@ final class FeatureSchema {
     static int baseBucket(double baseLapTime) {
         long tenths = Math.round(baseLapTime * 10.0);
         if (tenths < BASE_MIN_TENTHS || tenths > BASE_MAX_TENTHS) {
-            throw new IllegalArgumentException("base_lap_time out of range: " + baseLapTime);
+            return -1;
         }
         return (int) (tenths - BASE_MIN_TENTHS);
     }
 
     static int phaseBucket(int lap, int totalLaps) {
-        if (lap < 1 || lap > MAX_LAP) {
-            throw new IllegalArgumentException("Invalid lap for phase bucket: " + lap);
-        }
-        if (totalLaps < 1 || totalLaps > MAX_LAP) {
+        if (totalLaps < 1) {
             throw new IllegalArgumentException("Invalid total laps for phase bucket: " + totalLaps);
         }
         if (totalLaps == 1) {
             return 1;
         }
-        double scaled = 1.0 + ((double) (lap - 1) * (MAX_PHASE - 1)) / (double) (totalLaps - 1);
+        int boundedLap = clamp(lap, 1, totalLaps);
+        double scaled = 1.0 + ((double) (boundedLap - 1) * (MAX_PHASE - 1)) / (double) (totalLaps - 1);
         int bucket = (int) Math.round(scaled);
-        if (bucket < 1) {
-            return 1;
+        return clamp(bucket, 1, MAX_PHASE);
+    }
+
+    private static int clamp(int value, int min, int max) {
+        if (value < min) {
+            return min;
         }
-        if (bucket > MAX_PHASE) {
-            return MAX_PHASE;
+        if (value > max) {
+            return max;
         }
-        return bucket;
+        return value;
     }
 
     static boolean isTrackSet(String[] tracks) {
